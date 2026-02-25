@@ -1,0 +1,455 @@
+{% extends 'base.html' %}
+
+{% block title %}Mahsulotlar - Lustra & Lempala{% endblock %}
+
+{% block extra_css %}
+<style>
+    .products-container {
+        padding: 20px;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+    
+    .page-header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #1f2937;
+        margin: 0;
+    }
+    
+    .header-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .btn-action {
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-weight: 500;
+        font-size: 14px;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+    }
+    
+    .btn-success {
+        background-color: #10b981;
+        color: white;
+        border: none;
+    }
+    
+    .btn-success:hover {
+        background-color: #059669;
+        color: white;
+    }
+    
+    .btn-primary {
+        background-color: #3b82f6;
+        color: white;
+        border: none;
+    }
+    
+    .btn-primary:hover {
+        background-color: #2563eb;
+        color: white;
+    }
+    
+    .filter-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .filter-section .row {
+        margin: 0;
+    }
+    
+    .filter-section .form-label {
+        font-weight: 600;
+        font-size: 13px;
+        color: #374151;
+        margin-bottom: 6px;
+    }
+    
+    .filter-section .form-control,
+    .filter-section .form-select {
+        border: 1.5px solid #e5e7eb;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+    }
+    
+    .filter-section .form-control:focus,
+    .filter-section .form-select:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        outline: none;
+    }
+    
+    .products-table-container {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    .products-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .products-table thead {
+        background-color: #f9fafb;
+        border-bottom: 2px solid #e5e7eb;
+    }
+    
+    .products-table th {
+        padding: 14px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 13px;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .products-table tbody tr {
+        border-bottom: 1px solid #f3f4f6;
+        transition: background-color 0.15s;
+        cursor: pointer;
+    }
+    
+    .products-table tbody tr:hover {
+        background-color: #f9fafb;
+    }
+    
+    .products-table tbody tr.product-row-clickable {
+        cursor: pointer;
+    }
+    
+    .products-table tbody tr.product-row-clickable:hover {
+        background-color: #eff6ff;
+    }
+    
+    .products-table tbody tr.product-row-clickable .product-actions {
+        pointer-events: auto;
+    }
+    
+    .products-table tbody tr.product-row-clickable .product-actions a,
+    .products-table tbody tr.product-row-clickable .product-actions button,
+    .products-table tbody tr.product-row-clickable .product-actions form {
+        pointer-events: auto;
+    }
+    
+    .products-table tbody tr:last-child {
+        border-bottom: none;
+    }
+    
+    .products-table td {
+        padding: 16px;
+        vertical-align: middle;
+    }
+    
+    .product-image-cell {
+        width: 60px;
+    }
+    
+    .product-image-small {
+        width: 50px;
+        height: 50px;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 1px solid #e5e7eb;
+    }
+    
+    .product-image-placeholder {
+        width: 50px;
+        height: 50px;
+        background-color: #f3f4f6;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #9ca3af;
+        font-size: 20px;
+    }
+    
+    .product-name-cell {
+        min-width: 200px;
+    }
+    
+    .product-name {
+        font-weight: 600;
+        color: #1f2937;
+        font-size: 15px;
+        margin-bottom: 4px;
+    }
+    
+    .product-category {
+        font-size: 12px;
+        color: #6b7280;
+    }
+    
+    .product-sku {
+        font-size: 12px;
+        color: #9ca3af;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .product-variant {
+        margin-top: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    
+    .product-variant .badge {
+        background-color: #f3f4f6;
+        color: #111827;
+        font-size: 12px;
+        font-weight: 500;
+        padding: 4px 10px;
+        border-radius: 6px;
+        border: 1px solid #d1d5db;
+    }
+    
+    .product-price {
+        font-weight: 600;
+        color: #1f2937;
+        font-size: 15px;
+    }
+    
+    .product-stock {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+    
+    .stock-available {
+        background-color: #d1fae5;
+        color: #065f46;
+    }
+    
+    .stock-out {
+        background-color: #fee2e2;
+        color: #991b1b;
+    }
+    
+    .product-actions {
+        display: flex;
+        gap: 6px;
+    }
+    
+    .btn-icon {
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    .btn-view {
+        background-color: #eff6ff;
+        color: #2563eb;
+    }
+    
+    .btn-view:hover {
+        background-color: #dbeafe;
+        color: #1d4ed8;
+    }
+    
+    .btn-delete {
+        background-color: #fef2f2;
+        color: #dc2626;
+    }
+    
+    .btn-delete:hover {
+        background-color: #fee2e2;
+        color: #b91c1c;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6b7280;
+    }
+    
+    .empty-state i {
+        font-size: 48px;
+        color: #d1d5db;
+        margin-bottom: 16px;
+    }
+    
+    .empty-state p {
+        font-size: 16px;
+        margin: 0;
+    }
+    
+    @media (max-width: 768px) {
+        .products-table {
+            font-size: 12px;
+        }
+        
+        .products-table th,
+        .products-table td {
+            padding: 10px 8px;
+        }
+        
+        .product-name-cell {
+            min-width: 150px;
+        }
+        
+        .page-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+        
+        .header-actions {
+            width: 100%;
+        }
+        
+        .btn-action {
+            flex: 1;
+            justify-content: center;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="products-container">
+    <div class="page-header">
+        <h1><i class="bi bi-box-seam"></i> Mahsulotlar</h1>
+        <div class="header-actions">
+            <a href="{% url 'store:create_product' %}" class="btn-action btn-success">
+                <i class="bi bi-plus-circle"></i> Qo'shish
+            </a>
+            <a href="{% url 'store:create_sale' %}" class="btn-action btn-primary">
+                <i class="bi bi-cart-plus"></i> Sotuv
+            </a>
+        </div>
+    </div>
+
+    <!-- Filter Section -->
+    <div class="filter-section">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Kategoriya</label>
+                <select name="category" class="form-select">
+                    <option value="">Barchasi</option>
+                    {% for category in categories %}
+                        <option value="{{ category.id }}" {% if selected_category == category.id %}selected{% endif %}>
+                            {{ category.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Qidirish</label>
+                <input type="text" name="search" class="form-control" placeholder="Nom yoki SKU..." value="{{ search_query }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Min narx</label>
+                <input type="number" name="min_price" class="form-control" placeholder="Min" value="{{ request.GET.min_price }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Max narx</label>
+                <input type="number" name="max_price" class="form-control" placeholder="Max" value="{{ request.GET.max_price }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary w-100" style="padding: 8px 12px; font-size: 14px;">
+                        <i class="bi bi-funnel"></i> Filtr
+                    </button>
+                    <a href="{% url 'store:product_list_old' %}" class="btn btn-outline-secondary" style="padding: 8px 12px; font-size: 14px;">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Products Table: bitta mahsulot — bitta qator, ostida ranglar va qoldiq -->
+    <div class="products-table-container">
+        {% if products_with_variants %}
+        <table class="products-table">
+            <thead>
+                <tr>
+                    <th class="product-image-cell">Rasm</th>
+                    <th class="product-name-cell">Mahsulot</th>
+                    <th>Variantlar (rang, narx, qoldiq)</th>
+                    <th style="text-align: center; width: 120px;">Amallar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in products_with_variants %}
+                {% with product=item.product variants=item.variants first_variant=item.variants.0 %}
+                <tr class="product-row-clickable" onclick="window.location.href='{% url 'store:product_detail' first_variant.pk %}'" style="cursor: pointer;">
+                    <td class="product-image-cell">
+                        {% if first_variant.image %}
+                            <img src="{{ first_variant.image.url }}" class="product-image-small" alt="{{ product.name }}">
+                        {% elif product.image %}
+                            <img src="{{ product.image.url }}" class="product-image-small" alt="{{ product.name }}">
+                        {% else %}
+                            <div class="product-image-placeholder">
+                                <i class="bi bi-image"></i>
+                            </div>
+                        {% endif %}
+                    </td>
+                    <td class="product-name-cell">
+                        <div class="product-name">{{ product.name }}</div>
+                        <div class="product-category">{{ product.category.name }}</div>
+                    </td>
+                    <td>
+                        <div class="product-variant" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                            {% for v in variants %}
+                            <span class="badge" style="background: #f3f4f6; color: #111827; font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db;">
+                                {% for av in v.attribute_values.all %}{% if av.attribute.name == 'color' %}{{ av.value }}{% endif %}{% endfor %}{% if not v.attribute_values.all %}-{% endif %}
+                                &nbsp;|&nbsp;{{ v.price|floatformat:0 }} so'm&nbsp;|&nbsp;{{ v.stock_quantity }} dona
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td style="text-align: center;">
+                        <a href="{% url 'store:product_detail' first_variant.pk %}" class="btn-icon btn-view" title="Batafsil (barcha variantlar)" onclick="event.stopPropagation();">
+                            <i class="bi bi-eye"></i> Batafsil
+                        </a>
+                    </td>
+                </tr>
+                {% endwith %}
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-inbox"></i>
+            <p>Hech qanday mahsulot topilmadi</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

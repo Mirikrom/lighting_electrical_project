@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+
+{% block title %}Sotuv #{{ sale.id }} - Lustra & Lempala{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="display-5 fw-bold">
+        <i class="bi bi-receipt"></i> Sotuv #{{ sale.id }}
+    </h1>
+    <div class="d-flex gap-2">
+        <a href="{% url 'store:print_receipt' sale.pk %}" class="btn btn-success" target="_blank">
+            <i class="bi bi-printer"></i> Chek chiqarish
+        </a>
+        <a href="{% url 'store:sale_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Orqaga
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-cart"></i> Sotuv ma'lumotlari</h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Mahsulot</th>
+                            <th>Miqdor</th>
+                            <th>Narx</th>
+                            <th>Jami</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in sale.items.all %}
+                        <tr>
+                            <td>
+                                <strong>{{ item.product.name }}</strong><br>
+                                <small class="text-muted">SKU: {{ item.product.sku }}</small>
+                            </td>
+                            <td>{{ item.quantity }} dona</td>
+                            <td>{{ item.unit_price|floatformat:0 }} so'm</td>
+                            <td><strong>{{ item.subtotal|floatformat:0 }} so'm</strong></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-dark">
+                        <tr>
+                            <th colspan="3">JAMI:</th>
+                            <th>{{ sale.total_amount|floatformat:0 }} so'm</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Boshqa ma'lumotlar</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Sana va vaqt:</strong><br>{{ sale.sale_date|date:"d.m.Y H:i" }}</p>
+                
+                {% if sale.customer %}
+                <p><strong>Mijoz:</strong><br>
+                    {{ sale.customer.name }}<br>
+                    {% if sale.customer.phone %}
+                        <small class="text-muted">{{ sale.customer.phone }}</small>
+                    {% endif %}
+                </p>
+                {% else %}
+                <p><strong>Mijoz:</strong> Noma'lum</p>
+                {% endif %}
+                
+                <p><strong>To'lov usuli:</strong><br>
+                    {% if sale.payment_method == 'cash' %}
+                        <span class="badge bg-success">Naqd pul</span>
+                    {% elif sale.payment_method == 'card' %}
+                        <span class="badge bg-primary">Karta</span>
+                    {% elif sale.payment_method == 'credit' %}
+                        <span class="badge bg-danger">Qarzga</span>
+                    {% else %}
+                        <span class="badge bg-info">O'tkazma</span>
+                    {% endif %}
+                </p>
+                
+                {% if sale.created_by %}
+                <p><strong>Yaratgan:</strong><br>{{ sale.created_by.username }}</p>
+                {% endif %}
+                
+                {% if sale.notes %}
+                <p><strong>Izohlar:</strong><br>{{ sale.notes }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

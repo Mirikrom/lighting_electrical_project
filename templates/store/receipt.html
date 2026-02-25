@@ -1,0 +1,272 @@
+{% load store_tags %}
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chek #{{ sale.id }}</title>
+    <style>
+        @media print {
+            body { margin: 0; }
+            .no-print { display: none; }
+            @page { margin: 1cm; }
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 300px;
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+        }
+        
+        .header {
+            text-align: center;
+            border-bottom: 2px dashed #000;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            margin: 0;
+            font-weight: bold;
+        }
+        
+        .header p {
+            margin: 5px 0;
+            font-size: 12px;
+        }
+        
+        .info {
+            margin: 10px 0;
+            font-size: 12px;
+        }
+        
+        .items {
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+            padding: 10px 0;
+            margin: 15px 0;
+        }
+        
+        .item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: 12px;
+        }
+        
+        .item-name {
+            flex: 1;
+            margin-right: 10px;
+        }
+        
+        .item-qty {
+            margin: 0 5px;
+        }
+        
+        .item-price {
+            text-align: right;
+            min-width: 60px;
+        }
+        
+        .total {
+            text-align: right;
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 2px solid #000;
+            line-height: 1.5;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px dashed #000;
+            font-size: 11px;
+        }
+        
+        .action-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+            margin: 20px 0;
+            padding: 0 10px;
+        }
+        
+        .action-buttons button,
+        .action-buttons a.btn-link {
+            padding: 10px 16px;
+            font-size: 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
+        
+        .btn-print {
+            background: #007bff;
+            color: white;
+        }
+        .btn-print:hover {
+            background: #0056b3;
+        }
+        
+        .btn-telegram {
+            background: #0088cc;
+            color: white;
+        }
+        .btn-telegram:hover {
+            background: #006699;
+        }
+        
+        .btn-back {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-back:hover {
+            background: #5a6268;
+        }
+        
+        #receipt-content {
+            background: white;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div id="receipt-content">
+    <div class="header">
+        <h1>Laziz_Electronics_Store</h1>
+        <p>Chek #{{ sale.id }}</p>
+        <p>{{ sale.sale_date|date:"d.m.Y H:i" }}</p>
+        <p><strong>Bugungi kurs:</strong> {{ receipt_rate_formatted }} so'm</p>
+    </div>
+    
+    <div class="info">
+        {% if sale.customer %}
+        <p><strong>Mijoz:</strong> {{ sale.customer.name }}</p>
+        {% if sale.customer.phone %}
+        <p><strong>Tel:</strong> {{ sale.customer.phone }}</p>
+        {% endif %}
+        {% endif %}
+        <p><strong>To'lov:</strong> 
+            {% if sale.payment_method == 'cash' %}Naqd pul
+            {% elif sale.payment_method == 'card' %}Karta
+            {% else %}O'tkazma{% endif %}
+        </p>
+    </div>
+    
+    <div class="items">
+        {% for item in sale.items.all %}
+        <div class="item">
+            <div class="item-name">{{ item.product.name }}</div>
+            <div class="item-qty">{{ item.quantity }}x</div>
+            <div class="item-price">${{ item.subtotal|divide:receipt_rate|floatformat:2 }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="total">
+        JAMI:<br>
+        ${{ total_usd_formatted }}<br>
+        {{ total_soom_formatted }} so'm
+    </div>
+    
+    <div class="footer">
+        <p>Haridingiz uchun rahmat!</p>
+        <p>Tel: +998 90 003 55 56</p>
+        <p>Tel: +998 90 960 44 99</p>
+    </div>
+    </div>
+    
+    <div class="action-buttons no-print">
+        <button class="btn-print" onclick="window.print()">🖨️ Chekni chop etish</button>
+        <button class="btn-telegram" onclick="sendToTelegram()">📤 Telegramga yuborish</button>
+        <a href="{% url 'store:create_sale' %}" class="btn-link btn-back">← Ekranga qaytish</a>
+    </div>
+    <p class="no-print" style="font-size: 11px; color: #666; margin-top: 8px; text-align: center; max-width: 280px; margin-left: auto; margin-right: auto;">
+        Ochilgan oynada <strong>«Telegram»</strong>ni tanlang — keyin Telegramda kimga yuborishni tanlaysiz.
+    </p>
+    <p class="no-print" style="font-size: 10px; color: #999; margin-top: 4px; text-align: center;">
+        Agar Telegram ko‘rinmasa, <a href="#" id="telegramWebLink">bu yerni bosing</a>.
+    </p>
+    
+    <script>
+        var receiptText = "{{ receipt_text|escapejs }}";
+        var encodedText = encodeURIComponent(receiptText);
+        
+        function sendToTelegram() {
+            var receiptEl = document.getElementById('receipt-content');
+            if (!receiptEl) {
+                fallbackTelegram();
+                return;
+            }
+            if (typeof html2canvas === 'undefined') {
+                fallbackTelegram();
+                return;
+            }
+            html2canvas(receiptEl, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                logging: false
+            }).then(function(canvas) {
+                canvas.toBlob(function(blob) {
+                    if (!blob) {
+                        fallbackTelegram();
+                        return;
+                    }
+                    var file = new File([blob], 'chek-{{ sale.id }}.png', { type: 'image/png' });
+                    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                        navigator.share({ files: [file] }).then(function() {
+                            /* Share tugadi, qo'shimcha ochish kerak emas */
+                        }).catch(function(err) {
+                            if (err.name !== 'AbortError') downloadAndOpenTg(blob);
+                        });
+                    } else {
+                        downloadAndOpenTg(blob);
+                    }
+                }, 'image/png');
+            }).catch(function() {
+                fallbackTelegram();
+            });
+        }
+        
+        function downloadAndOpenTg(blob) {
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'chek-{{ sale.id }}.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(function() { URL.revokeObjectURL(a.href); }, 500);
+        }
+        
+        function fallbackTelegram() {
+            var tgWebUrl = 'https://t.me/share/url?text=' + encodedText;
+            document.getElementById('telegramWebLink').href = tgWebUrl;
+            document.getElementById('telegramWebLink').setAttribute('target', '_blank');
+            window.location.href = 'tg://msg?text=' + encodedText;
+        }
+        
+        window.onload = function() {
+            var tgWebUrl = 'https://t.me/share/url?text=' + encodedText;
+            var el = document.getElementById('telegramWebLink');
+            if (el) { el.href = tgWebUrl; el.setAttribute('target', '_blank'); }
+        };
+    </script>
+</body>
+</html>
+

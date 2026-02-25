@@ -1,0 +1,1449 @@
+{% extends 'base.html' %}
+
+{% block title %}Kassada - Lustra & Lempala{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        background: #f5f5f5;
+        margin: 0;
+        padding: 0;
+    }
+    
+    .pos-container {
+        max-width: 100%;
+        padding: 20px;
+    }
+    
+    /* Main Layout */
+    .main-layout {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 20px;
+    }
+    
+    .left-column {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    /* Header */
+    .pos-header {
+        background: white;
+        padding: 15px 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .pos-header-top {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .search-section {
+        flex: 1;
+        margin: 0;
+    }
+    
+    .search-input {
+        width: 100%;
+        padding: 12px 15px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+    
+    .top-products-section {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #e5e7eb;
+    }
+    
+    .quick-products {
+        display: flex;
+        gap: 12px;
+        overflow-x: auto;
+        padding: 5px 0;
+    }
+    
+    .quick-product-btn {
+        min-width: 180px;
+        padding: 15px;
+        background: #f0fdf4;
+        border: 2px solid #bbf7d0;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: left;
+        flex-shrink: 0;
+    }
+    
+    .quick-product-btn:hover {
+        border-color: #86efac;
+        box-shadow: 0 2px 8px rgba(34, 197, 94, 0.2);
+        transform: translateY(-2px);
+    }
+    
+    .quick-product-id {
+        font-size: 10px;
+        color: #6b7280;
+        margin-bottom: 2px;
+        font-weight: 500;
+    }
+    
+    .quick-product-name {
+        font-weight: 600;
+        color: #1f2937;
+        margin-bottom: 2px;
+        font-size: 12px;
+        line-height: 1.2;
+    }
+    
+    .quick-product-details {
+        font-size: 10px;
+        color: #6b7280;
+        margin-bottom: 3px;
+    }
+    
+    .quick-product-price {
+        font-weight: 700;
+        color: #16a34a;
+        font-size: 13px;
+    }
+    
+    /* Main Content - removed, using main-layout instead */
+    
+    /* Order Section */
+    .order-section {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .order-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+    
+    .order-header-left h2 {
+        font-size: 18px;
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0 0 5px 0;
+    }
+    
+    .order-header-left p {
+        margin: 0;
+        color: #6b7280;
+        font-size: 13px;
+    }
+    
+    .clear-btn {
+        padding: 10px 20px;
+        background: #ef4444;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+    }
+    
+    .clear-btn:hover {
+        background: #dc2626;
+    }
+    
+    .order-table-wrapper {
+        max-height: 400px; /* 8 ta mahsulot uchun (har biri ~50px) */
+        overflow-y: auto;
+        overflow-x: hidden;
+        margin-bottom: 12px;
+    }
+    
+    .order-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+    
+    .order-table thead {
+        background: #f9fafb;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .order-table th {
+        padding: 8px 6px;
+        text-align: left;
+        font-weight: 600;
+        color: #374151;
+        font-size: 11px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+    
+    .order-table td {
+        padding: 8px 6px;
+        border-bottom: 1px solid #f3f4f6;
+        vertical-align: middle;
+    }
+    
+    .order-table tbody tr:hover {
+        background: #f9fafb;
+    }
+    
+    /* Scrollbar styling */
+    .order-table-wrapper::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .order-table-wrapper::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 3px;
+    }
+    
+    .order-table-wrapper::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+    }
+    
+    .order-table-wrapper::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+    }
+    
+    .product-name-cell {
+        font-weight: 600;
+        color: #1f2937;
+        font-size: 12px;
+        line-height: 1.3;
+    }
+    
+    .product-details {
+        font-size: 10px;
+        color: #6b7280;
+        margin-top: 2px;
+    }
+    
+    .price-cell {
+        color: #1f2937;
+        font-size: 12px;
+    }
+    
+    .price-usd-fixed {
+        font-weight: 600;
+        color: #16a34a;
+        font-size: 12px;
+    }
+    
+    .price-soom-from-rate {
+        font-size: 10px;
+        color: #6b7280;
+        margin-top: 2px;
+    }
+    
+    .quantity-controls {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .qty-btn {
+        width: 24px;
+        height: 24px;
+        border: 1px solid #d1d5db;
+        background: white;
+        border-radius: 3px;
+        cursor: pointer;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        color: #374151;
+        padding: 0;
+    }
+    
+    .qty-btn:hover {
+        background: #f3f4f6;
+        border-color: #9ca3af;
+    }
+    
+    .qty-input {
+        width: 40px;
+        text-align: center;
+        border: 1px solid #d1d5db;
+        border-radius: 3px;
+        padding: 3px;
+        font-size: 12px;
+    }
+    
+    .remove-btn {
+        background: #ef4444;
+        color: white;
+        border: none;
+        border-radius: 3px;
+        padding: 4px 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 11px;
+    }
+    
+    .remove-btn:hover {
+        background: #dc2626;
+    }
+    
+    .order-summary {
+        background: #f9fafb;
+        padding: 12px;
+        border-radius: 6px;
+        margin-top: 12px;
+    }
+    
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 12px;
+    }
+    
+    .summary-row.total {
+        font-size: 16px;
+        font-weight: 700;
+        color: #16a34a;
+        padding-top: 10px;
+        border-top: 2px solid #e5e7eb;
+        margin-top: 10px;
+        margin-bottom: 0;
+    }
+    
+    .summary-label {
+        color: #6b7280;
+        font-weight: 500;
+        font-size: 15px;
+    }
+    
+    .summary-value {
+        font-weight: 600;
+        color: #1f2937;
+        font-size: 20px;
+        color: #16a34a;
+    }
+    
+    .summary-value.total {
+        color: #000000;
+        font-size: 18px;
+    }
+    
+    /* Sidebar */
+    .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .operator-info {
+        background: white;
+        padding: 12px;
+        border-radius: 6px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .operator-text {
+        font-size: 11px;
+        color: #6b7280;
+        margin-bottom: 6px;
+    }
+    
+    .report-btn {
+        width: 100%;
+        padding: 8px;
+        background: #6366f1;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 12px;
+        margin-top: 10px;
+    }
+    
+    .report-btn:hover {
+        background: #4f46e5;
+    }
+    
+    .payment-methods {
+        background: white;
+        padding: 12px;
+        border-radius: 6px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .payment-methods h3 {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 10px;
+        color: #1f2937;
+    }
+    
+    .payment-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+    }
+    
+    .payment-btn {
+        padding: 10px 8px;
+        border: 2px solid #e5e7eb;
+        background: #f0fdf4;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        color: #1f2937;
+        transition: all 0.2s;
+        text-align: center;
+        font-size: 11px;
+    }
+    
+    .payment-btn:hover {
+        border-color: #86efac;
+        background: #dcfce7;
+    }
+    
+    .payment-btn.active {
+        border-color: #6366f1;
+        background: #6366f1;
+        color: white;
+    }
+    
+    .payment-btn.credit {
+        grid-column: 1 / -1;
+    }
+    
+    .action-buttons {
+        background: white;
+        padding: 12px;
+        border-radius: 6px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .action-buttons h3 {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 10px;
+        color: #1f2937;
+    }
+    
+    .action-btn {
+        width: 100%;
+        padding: 10px;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-bottom: 8px;
+        font-size: 12px;
+        transition: all 0.2s;
+    }
+    
+    .action-btn:last-child {
+        margin-bottom: 0;
+    }
+    
+    .action-btn.cancel {
+        background: #fee2e2;
+        color: #dc2626;
+    }
+    
+    .action-btn.cancel:hover {
+        background: #fecaca;
+    }
+    
+    .action-btn.return {
+        background: #fed7aa;
+        color: #ea580c;
+    }
+    
+    .action-btn.return:hover {
+        background: #fdba74;
+    }
+    
+    .action-btn.finalize {
+        background: #dcfce7;
+        color: #16a34a;
+    }
+    
+    .action-btn.finalize:hover {
+        background: #bbf7d0;
+    }
+    
+    /* Autocomplete */
+    .autocomplete-container {
+        position: relative;
+    }
+    
+    .autocomplete-suggestions {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        margin-top: 5px;
+        max-height: 300px;
+        overflow-y: auto;
+        z-index: 1000;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        display: none;
+    }
+    
+    .autocomplete-suggestions.show {
+        display: block;
+    }
+    
+    .autocomplete-item {
+        padding: 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    
+    .autocomplete-item:hover {
+        background: #f9fafb;
+    }
+    
+    .autocomplete-item-name {
+        font-weight: 600;
+        color: #1f2937;
+    }
+    
+    .autocomplete-item-details {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 3px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pos-container">
+    <!-- Main Layout -->
+    <div class="main-layout">
+        <!-- Left Column -->
+        <div class="left-column">
+            <!-- Header -->
+            <div class="pos-header">
+                <div class="pos-header-top">
+                    <div class="search-section">
+                        <div class="autocomplete-container">
+                            <input type="text" class="search-input" id="productSearch" 
+                                   placeholder="Mahsulot yoki kategoriya qidirish..." autocomplete="off">
+                            <div class="autocomplete-suggestions" id="productSearchSuggestions"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Top Products Section -->
+                <div class="top-products-section" id="topProductsSection">
+                    <div class="quick-products" id="topProductsContainer">
+                        {% for variant in top_products %}
+                        {% widthratio variant.price 12500 1 as price_usd %}
+                        <div class="quick-product-btn" data-variant-id="{{ variant.id }}" data-variant-name="{{ variant.product.name }}" data-variant-price="{{ variant.price }}" data-variant-stock="{{ variant.stock_quantity }}">
+                            <!-- <div class="quick-product-id">SKU: {{ variant.sku }}</div> -->
+                            <div class="quick-product-name">{{ variant.product.name }}</div>
+                            <div class="quick-product-details">
+                                ${{ price_usd|floatformat:2 }} | {{ variant.stock_quantity }} 
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div style="padding: 10px; color: #6b7280; font-size: 14px;">Top mahsulotlar mavjud emas</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+        <!-- Order Section -->
+        <!-- Order Table -->
+        <div class="order-section">
+            <!-- <div class="order-header">
+                <div class="order-header-left">
+                    <h2>Administrator: Kassir joyi</h2>
+                    <p>Buyurtmalar jadvali</p>
+                </div>
+                <button class="clear-btn" onclick="clearCart()">Tozalash</button>
+            </div> -->
+            
+            <div class="order-table-wrapper">
+                <table class="order-table">
+                    <thead>
+                        <tr>
+                            <th>N</th>
+                            <th>MAXSULOT</th>
+                            <th>NARX</th>
+                            <th>MIQDOR</th>
+                            <th>SUMMA</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="orderTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 40px; color: #9ca3af;">
+                                Savat bo'sh
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="order-summary" id="orderSummary" style="display: none;">
+                <div class="summary-row">
+                    <span class="summary-label">YAKUNIY TO'LOV (UZS)</span>
+                    <span class="summary-value" id="totalPaymentUZS">0 so'm</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">YAKUNIY TO'LOV ($)</span>
+                    <span class="summary-value" id="totalPaymentUSD">0 $</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">CHEGIRMA</span>
+                    <span class="summary-value" id="discount">0 so'm</span>
+                </div>
+                <div class="summary-row total">
+                    <span class="summary-label">JAMI MAXSULOTLAR</span>
+                    <span class="summary-value total" id="totalProducts">0 ta</span>
+                </div>
+            </div>
+        </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Operator Info -->
+            <div class="operator-info">
+                <div class="operator-text">Operator: {% if user.is_authenticated %}{{ user.username }}{% else %}Anonim{% endif %}</div>
+                <div class="operator-text">Shift: #{{ request.session.shift_number|default:"1" }}</div>
+                <div class="operator-text" style="margin-top: 10px;">
+                    <label for="usdRate" style="display: block; margin-bottom: 5px; font-size: 12px; color: #6b7280;">Dollar kursi (so'm):</label>
+                    <input type="number" id="usdRate" value="12500" min="1" step="1" 
+                           style="width: 100%; padding: 6px; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 14px;"
+                           onchange="updateExchangeRate()">
+                </div>
+                <button class="report-btn" onclick="window.location.href='{% url 'store:sale_list' %}'" style="margin-top: 10px;">Hisobot</button>
+                <button class="report-btn" onclick="window.location.href='{% url 'store:credit_list' %}'" style="margin-top: 10px; background: #ef4444;">Qarzdorlar</button>
+            </div>
+
+            <!-- Payment Methods -->
+            <div class="payment-methods">
+                <h3>To'lov usullari</h3>
+                <div class="payment-grid">
+                    <button class="payment-btn active" data-method="cash" onclick="selectPaymentMethod('cash')">NAQD</button>
+                    <button class="payment-btn" data-method="card" onclick="selectPaymentMethod('card')">PLASTIK</button>
+                    <button class="payment-btn" data-method="mixed" onclick="selectPaymentMethod('mixed')">ARALASH</button>
+                    <button class="payment-btn" data-method="discount" onclick="applyDiscount()">SKIDKA</button>
+                    <button class="payment-btn credit" data-method="credit" onclick="selectPaymentMethod('credit')">QARZGA</button>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <h3>Amallar</h3>
+                <button class="action-btn cancel" onclick="cancelReceipt()">Chekni bekor qilish</button>
+                <button class="action-btn finalize" onclick="finalizeOrder()">Buyurtmani yakunlash</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Variant choice modal (Rangni tanlang) -->
+<div id="variantModal" class="no-print" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+        <h3 style="margin: 0 0 16px 0; font-size: 18px;">Rangni tanlang</h3>
+        <p id="variantModalProductName" style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px;"></p>
+        <div id="variantModalList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        <button type="button" onclick="closeVariantModal()" style="margin-top: 16px; padding: 8px 16px; background: #e5e7eb; border: none; border-radius: 6px; cursor: pointer;">Bekor qilish</button>
+    </div>
+</div>
+
+<!-- Customer Modal -->
+<div id="customerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 30px; border-radius: 10px; max-width: 500px; width: 90%; position: relative;">
+        <h3 style="margin-top: 0; margin-bottom: 20px;">Mijoz ma'lumotlari</h3>
+        <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Mijoz nomi:</label>
+            <div style="position: relative;">
+                <input type="text" id="customerNameInput" placeholder="Mijoz nomini kiriting..." 
+                       style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 5px; font-size: 14px;"
+                       autocomplete="off">
+                <div id="customerSuggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #e5e7eb; border-radius: 5px; margin-top: 5px; max-height: 200px; overflow-y: auto; z-index: 10001; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
+            </div>
+        </div>
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Telefon:</label>
+            <input type="text" id="customerPhoneInput" placeholder="Telefon raqami..." 
+                   style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 5px; font-size: 14px;">
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button onclick="closeCustomerModal()" style="padding: 10px 20px; background: #e5e7eb; border: none; border-radius: 5px; cursor: pointer;">Bekor qilish</button>
+            <button onclick="confirmCustomer()" style="padding: 10px 20px; background: #16a34a; color: white; border: none; border-radius: 5px; cursor: pointer;">Tasdiqlash</button>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden form for submission -->
+<form id="saleForm" style="display: none;">
+    {% csrf_token %}
+    <input type="hidden" id="customerName" name="customer_name">
+    <input type="hidden" id="customerPhone" name="customer_phone">
+    <input type="hidden" id="paymentMethod" name="payment_method" value="cash">
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let cart = [];
+    let selectedPaymentMethod = 'cash';
+    let discount = 0;
+    let searchAutocompleteTimeout;
+    let searchSelectedIndex = -1;
+    let searchSuggestions = [];
+    
+    // Autocomplete
+    const productSearchInput = document.getElementById('productSearch');
+    const searchSuggestionsContainer = document.getElementById('productSearchSuggestions');
+    
+    // Top products for default display
+    let topProducts = [];
+    {% if top_products_json %}
+    try {
+        topProducts = JSON.parse('{{ top_products_json|escapejs }}');
+    } catch (e) {
+        console.error('Error parsing top products:', e);
+        topProducts = [];
+    }
+    {% endif %}
+    
+    console.log('Top products loaded:', topProducts);
+
+    // Auto-add product to cart if product_id is in query params (product_id == variant.id)
+    (function autoAddProductFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const productIdParam = params.get('product_id');
+        if (productIdParam) {
+            const pid = parseInt(productIdParam);
+            if (!isNaN(pid)) {
+                // Slight delay to ensure page JS is ready
+                setTimeout(() => addProductToCartById(pid), 200);
+            }
+        }
+    })();
+    
+    productSearchInput.addEventListener('input', function() {
+        const query = this.value.trim();
+        clearTimeout(searchAutocompleteTimeout);
+        if (query.length === 0) {
+            displayTopProductsInQuickSection(topProducts);
+            return;
+        }
+        if (query.length < 2) {
+            clearQuickProductsSection();
+            return;
+        }
+        searchAutocompleteTimeout = setTimeout(function() {
+            searchProductsAndShowInQuickSection(query);
+        }, 250);
+    });
+    
+    // Show top products on page load if input is empty
+    if (topProducts.length > 0 && productSearchInput.value.trim().length === 0) {
+        // Don't show immediately, wait for user interaction
+        // But show when input gets focus
+    }
+    
+    productSearchInput.addEventListener('keydown', function(e) {
+        if (!searchSuggestionsContainer.classList.contains('show')) return;
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            searchSelectedIndex = Math.min(searchSelectedIndex + 1, searchSuggestions.length - 1);
+            updateSearchSelection();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            searchSelectedIndex = Math.max(searchSelectedIndex - 1, -1);
+            updateSearchSelection();
+        } else if (e.key === 'Enter' && searchSelectedIndex >= 0) {
+            e.preventDefault();
+            selectSearchSuggestionByIndex(searchSelectedIndex);
+        } else if (e.key === 'Escape') {
+            searchSuggestionsContainer.classList.remove('show');
+        }
+    });
+    
+    function searchProductsAutocomplete(query) {
+        fetch(`{% url 'store:search_products_autocomplete' %}?q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                searchSuggestions = data.products;
+                displaySearchSuggestions(searchSuggestions);
+            })
+            .catch(error => console.error('Error:', error));
+    }
+    
+    function searchProductsAndShowInQuickSection(query) {
+        fetch(`{% url 'store:search_products_autocomplete' %}?q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.products && data.products.length > 0) {
+                    displayTopProductsInQuickSection(data.products);
+                } else {
+                    clearQuickProductsSection();
+                }
+            })
+            .catch(error => {
+                console.error('Error searching products:', error);
+                clearQuickProductsSection();
+            });
+    }
+    
+    // Guruhlash: product_id bo'yicha bitta mahsulot — bitta tugma; bir nechta variant bo'lsa modal ochiladi
+    function groupVariantsByProduct(products) {
+        const byProduct = {};
+        (products || []).forEach(p => {
+            const pid = p.product_id != null ? p.product_id : p.id;
+            if (!byProduct[pid]) byProduct[pid] = { product_id: pid, product_name: p.name || '', variants: [] };
+            byProduct[pid].variants.push({
+                id: p.id,
+                variant_name: p.variant_name || p.name,
+                price: parseFloat(p.price),
+                stock: parseInt(p.stock) || 0,
+            });
+        });
+        return Object.values(byProduct);
+    }
+
+    function openVariantModal(productName, variants) {
+        const modal = document.getElementById('variantModal');
+        const nameEl = document.getElementById('variantModalProductName');
+        const listEl = document.getElementById('variantModalList');
+        if (!modal || !nameEl || !listEl) return;
+        nameEl.textContent = productName;
+        const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
+        listEl.innerHTML = variants.map(v => {
+            const inCart = cart.find(item => item.product_id === v.id);
+            const qtyInCart = inCart ? inCart.quantity : 0;
+            const remaining = Math.max(0, v.stock - qtyInCart);
+            const priceUSD = (v.price / usdRate).toFixed(2);
+            return `
+                <button type="button" class="quick-product-btn" style="text-align: left; width: 100%;" data-variant-id="${v.id}" data-variant-name="${v.variant_name}" data-variant-price="${v.price}" data-variant-stock="${v.stock}">
+                    <div class="quick-product-name">${v.variant_name}</div>
+                    <div class="quick-product-details">$${priceUSD} | Qolgan: ${remaining} dona</div>
+                </button>
+            `;
+        }).join('');
+        listEl.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const variantId = parseInt(this.getAttribute('data-variant-id'));
+                const variantName = this.getAttribute('data-variant-name');
+                const variantPrice = parseFloat(this.getAttribute('data-variant-price'));
+                const variantStock = parseInt(this.getAttribute('data-variant-stock'));
+                addProductToCart(variantId, variantName, variantPrice, variantStock);
+                closeVariantModal();
+            });
+        });
+        modal.style.display = 'flex';
+    }
+
+    function closeVariantModal() {
+        const modal = document.getElementById('variantModal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    function displayTopProductsInQuickSection(products) {
+        const topProductsContainer = document.getElementById('topProductsContainer');
+        if (!topProductsContainer) return;
+        
+        if (!products || products.length === 0) {
+            topProductsContainer.innerHTML = '<div style="padding: 10px; color: #6b7280; font-size: 14px;">Mahsulot topilmadi</div>';
+            return;
+        }
+        
+        const USD_RATE = parseFloat(document.getElementById('usdRate')?.value) || 12500;
+        const groups = groupVariantsByProduct(products).slice(0, 5);
+        
+        const htmlParts = [];
+        groups.forEach(group => {
+            const productName = group.product_name || (group.variants[0] && group.variants[0].variant_name) || '';
+            if (group.variants.length === 1) {
+                const v = group.variants[0];
+                const priceUSD = (v.price / USD_RATE).toFixed(2);
+                htmlParts.push(`
+                    <div class="quick-product-btn" data-variant-id="${v.id}" data-variant-name="${v.variant_name}" data-variant-price="${v.price}" data-variant-stock="${v.stock}" data-original-stock="${v.stock}">
+                        <div class="quick-product-name">${v.variant_name}</div>
+                        <div class="quick-product-details">$${priceUSD} | ${v.stock} dona</div>
+                    </div>
+                `);
+            } else {
+                const variantsJson = JSON.stringify(group.variants).replace(/"/g, '&quot;');
+                htmlParts.push(`
+                    <div class="quick-product-btn quick-product-btn-multi" data-product-id="${group.product_id}" data-product-name="${productName}" data-variants="${variantsJson}">
+                        <div class="quick-product-name">${productName}</div>
+                        <div class="quick-product-details">${group.variants.length} rang</div>
+                    </div>
+                `);
+            }
+        });
+        topProductsContainer.innerHTML = htmlParts.join('');
+        
+        topProductsContainer.querySelectorAll('.quick-product-btn').forEach(btn => {
+            if (btn.hasAttribute('data-variant-id')) {
+                btn.addEventListener('click', function() {
+                    const variantId = parseInt(this.getAttribute('data-variant-id'));
+                    const variantName = this.getAttribute('data-variant-name');
+                    const variantPrice = parseFloat(this.getAttribute('data-variant-price'));
+                    const originalStock = parseInt(this.getAttribute('data-original-stock')) || parseInt(this.getAttribute('data-variant-stock'));
+                    addProductToCart(variantId, variantName, variantPrice, originalStock);
+                });
+            } else if (btn.hasAttribute('data-product-id')) {
+                btn.addEventListener('click', function() {
+                    const productName = this.getAttribute('data-product-name');
+                    const variantsStr = this.getAttribute('data-variants');
+                    if (!variantsStr) return;
+                    const variants = JSON.parse(variantsStr.replace(/&quot;/g, '"'));
+                    openVariantModal(productName, variants);
+                });
+            }
+        });
+    }
+    
+    function clearQuickProductsSection() {
+        const topProductsContainer = document.getElementById('topProductsContainer');
+        if (!topProductsContainer) return;
+        topProductsContainer.innerHTML = '<div style="padding: 10px; color: #6b7280; font-size: 14px;">Qidiruv natijalari...</div>';
+    }
+    
+    // Qidiruvda bitta mahsulot — bitta qator; bir nechta variant bo'lsa tanlash modal ochiladi
+    function displaySearchSuggestions(products) {
+        if (!products || products.length === 0) {
+            searchSuggestionsContainer.classList.remove('show');
+            return;
+        }
+        const groups = groupVariantsByProduct(products);
+        searchSuggestions = groups;
+        searchSuggestionsContainer.innerHTML = groups.map((group, index) => {
+            const productName = group.product_name || (group.variants[0] && group.variants[0].variant_name) || '';
+            const label = group.variants.length === 1 ? `${group.variants[0].variant_name} | ${parseFloat(group.variants[0].price).toLocaleString()} so'm` : `${productName} — ${group.variants.length} rang`;
+            return `
+            <div class="autocomplete-item" data-index="${index}">
+                <div class="autocomplete-item-name">${productName}</div>
+                <div class="autocomplete-item-details">${label}</div>
+            </div>
+        `;
+        }).join('');
+        searchSuggestionsContainer.querySelectorAll('.autocomplete-item').forEach((el, index) => {
+            el.addEventListener('click', () => selectSearchSuggestionByIndex(index));
+        });
+        searchSuggestionsContainer.classList.add('show');
+        searchSelectedIndex = -1;
+    }
+    
+    function updateSearchSelection() {
+        const items = searchSuggestionsContainer.querySelectorAll('.autocomplete-item');
+        items.forEach((item, index) => {
+            item.style.background = index === searchSelectedIndex ? '#eff6ff' : 'white';
+        });
+    }
+    
+    function selectSearchSuggestionByIndex(index) {
+        productSearchInput.value = '';
+        searchSuggestionsContainer.classList.remove('show');
+        if (index < 0 || !searchSuggestions || !searchSuggestions[index]) return;
+        const group = searchSuggestions[index];
+        const productName = group.product_name || (group.variants[0] && group.variants[0].variant_name) || '';
+        if (group.variants.length === 1) {
+            const v = group.variants[0];
+            addProductToCart(v.id, v.variant_name, v.price, v.stock);
+        } else {
+            openVariantModal(productName, group.variants);
+        }
+    }
+
+    function selectSearchSuggestion(product) {
+        // Eski API: bitta variant ob'ekt — to'g'ridan-to'g'ri qo'shamiz
+        productSearchInput.value = '';
+        searchSuggestionsContainer.classList.remove('show');
+        const variantId = typeof product.id === 'string' ? parseInt(product.id) : product.id;
+        const displayName = product.variant_name || product.name;
+        const price = parseFloat(product.price);
+        const stock = parseInt(product.stock);
+        addProductToCart(variantId, displayName, price, stock);
+    }
+    
+    document.addEventListener('click', function(e) {
+        if (!productSearchInput.contains(e.target) && !searchSuggestionsContainer.contains(e.target)) {
+            searchSuggestionsContainer.classList.remove('show');
+        }
+    });
+    
+    // Initialize top products on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        // Display top products initially
+        if (topProducts.length > 0) {
+            displayTopProductsInQuickSection(topProducts);
+        }
+    });
+    
+    // Add product to cart with default quantity 1
+    // productPrice = narx bazadan (so'm). Korzinkada USD da saqlaymiz — kurs o'zgarganda $ o'zgarmasligi uchun.
+    function addProductToCart(productId, productName, productPriceSoom, productStock) {
+        const quantity = 1;
+        const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
+        const priceUsd = productPriceSoom / usdRate;
+        
+        if (productStock <= 0) {
+            alert(`Yetarli mahsulot yo'q! Mavjud: ${productStock} dona`);
+            return;
+        }
+        
+        const existingItem = cart.find(item => item.product_id === productId);
+        
+        if (existingItem) {
+            const newQuantity = existingItem.quantity + quantity;
+            if (newQuantity > productStock) {
+                alert(`Yetarli mahsulot yo'q! Mavjud: ${productStock} dona, Savatda: ${existingItem.quantity} dona`);
+                return;
+            }
+            existingItem.quantity = newQuantity;
+        } else {
+            cart.push({
+                product_id: productId,
+                name: productName,
+                price: priceUsd,
+                quantity: quantity,
+                stock: productStock
+            });
+        }
+        
+        updateOrderTable();
+        productSearchInput.value = '';
+    }
+    
+    async function addProductToCartById(productId) {
+        try {
+            const response = await fetch(`{% url 'store:products_json' %}`);
+            const data = await response.json();
+            const product = data.products.find(p => p.id == productId);
+            if (product) {
+                const priceSoom = parseFloat(product.price);
+                addProductToCart(parseInt(product.id), product.name, priceSoom, parseInt(product.stock));
+            } else {
+                console.error('Product not found:', productId);
+                alert('Mahsulot topilmadi!');
+            }
+        } catch (error) {
+            console.error('Error fetching product:', error);
+            alert('Xatolik yuz berdi!');
+        }
+    }
+    
+    // Update order table
+    function updateOrderTable() {
+        const tbody = document.getElementById('orderTableBody');
+        const orderSummary = document.getElementById('orderSummary');
+        
+        if (cart.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #9ca3af;">Savat bo\'sh</td></tr>';
+            // Hide order summary when cart is empty
+            if (orderSummary) {
+                orderSummary.style.display = 'none';
+            }
+            updateQuickProducts();
+            return;
+        }
+        
+        // Show order summary when cart has items
+        if (orderSummary) {
+            orderSummary.style.display = 'block';
+        }
+        
+        let html = '';
+        const usdRate = parseFloat(document.getElementById('usdRate').value) || 12500;
+        cart.forEach((item, index) => {
+            // item.price = USD (o'zgarmaydi). So'm = USD * kurs (kurs o'zgarganda shu qator yangilanadi)
+            const priceUSD = item.price;
+            const subtotalUSD = item.price * item.quantity;
+            const priceSoom = item.price * usdRate;
+            const subtotalSoom = item.price * item.quantity * usdRate;
+            const remainingStock = item.stock - item.quantity;
+            html += `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>
+                        <div class="product-name-cell" 
+                             onmouseover="showStockTooltip(this, ${remainingStock}, ${item.stock})" 
+                             onmouseout="hideStockTooltip(this)"
+                             onclick="showStockTooltip(this, ${remainingStock}, ${item.stock})"
+                             style="cursor: pointer; position: relative;">
+                            ${item.name}
+                            <span class="stock-tooltip" id="tooltip-${index}" style="display: none; position: absolute; background: #1f2937; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 1000; top: 100%; left: 0; margin-top: 5px; white-space: nowrap;">
+                                Qolgan: ${remainingStock} dona (Bazada: ${item.stock} dona)
+                            </span>
+                        </div>
+                    </td>
+                    <td class="price-cell">
+                        <div class="price-usd-fixed">$${priceUSD.toFixed(2)}</div>
+                        <div class="price-soom-from-rate">${Math.round(priceSoom).toLocaleString()} so'm</div>
+                    </td>
+                    <td>
+                        <div class="quantity-controls">
+                            <button class="qty-btn" onclick="decreaseQuantity(${index})">-</button>
+                            <input type="number" class="qty-input" value="${item.quantity}" min="1" max="${item.stock}" 
+                                   onchange="updateQuantity(${index}, this.value)">
+                            <button class="qty-btn" onclick="increaseQuantity(${index})">+</button>
+                        </div>
+                    </td>
+                    <td class="price-cell">
+                        <div class="price-usd-fixed">$${subtotalUSD.toFixed(2)}</div>
+                        <div class="price-soom-from-rate">${Math.round(subtotalSoom).toLocaleString()} so'm</div>
+                    </td>
+                    <td>
+                        <button class="remove-btn" onclick="removeItem(${index})">X</button>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tbody.innerHTML = html;
+        updateSummary();
+        updateQuickProducts();
+    }
+    
+    function updateSummary() {
+        let totalUSD = 0;
+        let totalItems = 0;
+        const usdRate = parseFloat(document.getElementById('usdRate').value) || 12500;
+        
+        cart.forEach(item => {
+            totalUSD += item.price * item.quantity;
+            totalItems += item.quantity;
+        });
+        
+        // totalPaymentUSD = dollarda (o'zgarmaydi). totalPaymentUZS = dollar * kurs (kurs o'zgarganda shu yangilanadi)
+        const totalSoom = totalUSD * usdRate - discount;
+        
+        document.getElementById('totalPaymentUSD').textContent = '$' + totalUSD.toFixed(2);
+        document.getElementById('totalPaymentUZS').textContent = Math.round(totalSoom).toLocaleString() + ' so\'m';
+        document.getElementById('discount').textContent = discount.toLocaleString() + ' so\'m';
+        document.getElementById('totalProducts').textContent = totalItems + ' ta';
+    }
+    
+    function updateExchangeRate() {
+        updateOrderTable();
+    }
+    
+    function showStockTooltip(element, remainingStock, originalStock) {
+        const tooltip = element.querySelector('.stock-tooltip');
+        if (tooltip) {
+            tooltip.style.display = 'block';
+            // Hide after 3 seconds if clicked
+            setTimeout(() => {
+                if (tooltip.style.display === 'block') {
+                    tooltip.style.display = 'none';
+                }
+            }, 3000);
+        }
+    }
+    
+    function hideStockTooltip(element) {
+        const tooltip = element.querySelector('.stock-tooltip');
+        if (tooltip) {
+            tooltip.style.display = 'none';
+        }
+    }
+    
+    // Update quick products stock display based on cart (faqat bitta variantli tugmalar)
+    function updateQuickProducts() {
+        const quickProductButtons = document.querySelectorAll('.quick-product-btn[data-variant-id]');
+        const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
+        quickProductButtons.forEach(btn => {
+            const variantId = parseInt(btn.getAttribute('data-variant-id'));
+            const originalStock = parseInt(btn.getAttribute('data-original-stock')) || parseInt(btn.getAttribute('data-variant-stock')) || 0;
+            const cartItem = cart.find(item => item.product_id === variantId);
+            const quantityInCart = cartItem ? cartItem.quantity : 0;
+            const remainingStock = Math.max(0, originalStock - quantityInCart);
+            const detailsEl = btn.querySelector('.quick-product-details');
+            if (detailsEl) {
+                const price = parseFloat(btn.getAttribute('data-variant-price')) || 0;
+                const priceUSD = (price / usdRate).toFixed(2);
+                detailsEl.textContent = `$${priceUSD} | ${remainingStock} dona`;
+                if (remainingStock <= 0) detailsEl.style.color = '#ef4444';
+                else if (remainingStock <= 5) detailsEl.style.color = '#f59e0b';
+                else detailsEl.style.color = '';
+            }
+        });
+    }
+    
+    function increaseQuantity(index) {
+        if (cart[index].quantity < cart[index].stock) {
+            cart[index].quantity++;
+            updateOrderTable();
+        }
+    }
+    
+    function decreaseQuantity(index) {
+        if (cart[index].quantity > 1) {
+            cart[index].quantity--;
+            updateOrderTable();
+        } else {
+            // If quantity is 1, ask if user wants to remove item
+            if (confirm(`"${cart[index].name}" mahsulotini savatdan o'chirishni tasdiqlaysizmi?`)) {
+                removeItem(index);
+            }
+        }
+    }
+    
+    function updateQuantity(index, value) {
+        const qty = parseInt(value);
+        if (qty >= 1 && qty <= cart[index].stock) {
+            cart[index].quantity = qty;
+            updateOrderTable();
+        } else {
+            updateOrderTable();
+        }
+    }
+    
+    function removeItem(index) {
+        if (index >= 0 && index < cart.length) {
+            const item = cart[index];
+            if (confirm(`"${item.name}" mahsulotini savatdan o'chirishni tasdiqlaysizmi?`)) {
+                cart.splice(index, 1);
+                updateOrderTable();
+            }
+        }
+    }
+    
+    function clearCart() {
+        if (confirm('Barcha mahsulotlarni o\'chirishni tasdiqlaysizmi?')) {
+            cart = [];
+            discount = 0;
+            updateOrderTable();
+        }
+    }
+    
+    // Payment methods
+    function selectPaymentMethod(method) {
+        selectedPaymentMethod = method;
+        document.querySelectorAll('.payment-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-method="${method}"]`).classList.add('active');
+        document.getElementById('paymentMethod').value = method;
+    }
+    
+    function applyDiscount() {
+        const amount = prompt('Chegirma miqdorini kiriting (so\'m):');
+        if (amount) {
+            discount = parseFloat(amount) || 0;
+            updateSummary();
+        }
+    }
+    
+    // Actions
+    function cancelReceipt() {
+        if (confirm('Chekni bekor qilishni tasdiqlaysizmi?')) {
+            clearCart();
+        }
+    }
+    
+    
+    let selectedCustomer = null;
+    let customerAutocompleteTimeout;
+    
+    // Customer autocomplete
+    const customerNameInput = document.getElementById('customerNameInput');
+    const customerPhoneInput = document.getElementById('customerPhoneInput');
+    const customerSuggestions = document.getElementById('customerSuggestions');
+    
+    if (customerNameInput) {
+        customerNameInput.addEventListener('input', function() {
+            const query = this.value.trim();
+            clearTimeout(customerAutocompleteTimeout);
+            
+            if (query.length < 1) {
+                if (customerSuggestions) customerSuggestions.style.display = 'none';
+                selectedCustomer = null;
+                return;
+            }
+            
+            customerAutocompleteTimeout = setTimeout(() => {
+                fetch(`{% url 'store:search_customers_autocomplete' %}?q=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!customerSuggestions) return;
+                        if (data.customers && data.customers.length > 0) {
+                            let html = '';
+                            data.customers.forEach(customer => {
+                                const nameEsc = (customer.name || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                                const phoneEsc = (customer.phone || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                                html += `
+                                    <div class="customer-suggestion-item" 
+                                         data-customer-id="${customer.id}"
+                                         data-customer-name="${nameEsc}"
+                                         data-customer-phone="${phoneEsc}"
+                                         style="padding: 10px; cursor: pointer; border-bottom: 1px solid #e5e7eb;">
+                                        <div style="font-weight: 600;">${customer.name}</div>
+                                        ${customer.phone ? `<div style="font-size: 12px; color: #6b7280;">${customer.phone}</div>` : ''}
+                                    </div>
+                                `;
+                            });
+                            customerSuggestions.innerHTML = html;
+                            customerSuggestions.style.display = 'block';
+                        } else {
+                            customerSuggestions.style.display = 'none';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching customers:', error);
+                    });
+            }, 300);
+        });
+    }
+    
+    function selectCustomer(id, name, phone) {
+        selectedCustomer = { id, name: name || '', phone: phone || '' };
+        if (customerNameInput) customerNameInput.value = selectedCustomer.name;
+        if (customerPhoneInput) customerPhoneInput.value = selectedCustomer.phone;
+        if (customerSuggestions) customerSuggestions.style.display = 'none';
+    }
+    
+    if (customerSuggestions) {
+        customerSuggestions.addEventListener('click', function(e) {
+            const item = e.target.closest('.customer-suggestion-item');
+            if (!item) return;
+            const id = item.getAttribute('data-customer-id');
+            const name = item.getAttribute('data-customer-name') || '';
+            const phone = item.getAttribute('data-customer-phone') || '';
+            selectCustomer(id, name, phone);
+        });
+    }
+    
+    function showCustomerModal() {
+        const modal = document.getElementById('customerModal');
+        if (modal) modal.style.display = 'flex';
+        if (customerNameInput) customerNameInput.value = '';
+        if (customerPhoneInput) customerPhoneInput.value = '';
+        selectedCustomer = null;
+        if (customerNameInput) customerNameInput.focus();
+    }
+    
+    function closeCustomerModal() {
+        document.getElementById('customerModal').style.display = 'none';
+    }
+    
+    // Close modal when clicking outside
+    document.addEventListener('click', function(e) {
+        const modal = document.getElementById('customerModal');
+        if (modal && e.target === modal) {
+            closeCustomerModal();
+        }
+    });
+    
+    function confirmCustomer() {
+        const nameEl = document.getElementById('customerNameInput');
+        const phoneEl = document.getElementById('customerPhoneInput');
+        const customerName = nameEl ? nameEl.value.trim() : '';
+        const customerPhone = phoneEl ? phoneEl.value.trim() : '';
+        
+        if (!customerName) {
+            alert('Mijoz nomini kiriting!');
+            return;
+        }
+        
+        closeCustomerModal();
+        proceedWithOrder(customerName, customerPhone).catch(function(err) {
+            console.error('Sotuv yuborishda xatolik:', err);
+            alert('Xatolik: ' + (err && err.message ? err.message : String(err)));
+        });
+    }
+    
+    async function finalizeOrder() {
+        if (cart.length === 0) {
+            alert('Savat bo\'sh!');
+            return;
+        }
+        
+        showCustomerModal();
+    }
+    
+    async function proceedWithOrder(customerName, customerPhone) {
+        const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
+        const data = {
+            customer_name: customerName,
+            customer_phone: customerPhone,
+            payment_method: selectedPaymentMethod,
+            usd_rate: usdRate,
+            items: cart.map(item => {
+                const priceSoom = Math.round(item.price * usdRate * 100) / 100;
+                return {
+                    product_id: item.product_id,
+                    quantity: item.quantity,
+                    price: priceSoom
+                };
+            })
+        };
+        
+        try {
+            function getCookie(name) {
+                let cookieValue = null;
+                if (document.cookie && document.cookie !== '') {
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i].trim();
+                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return cookieValue;
+            }
+            
+            const csrftoken = getCookie('csrftoken');
+            
+            const response = await fetch('{% url "store:create_sale" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify(data)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Clear cart before redirecting
+                cart = [];
+                discount = 0;
+                updateOrderTable();
+                
+                // Show success message
+                alert('Sotuv muvaffaqiyatli yaratildi!');
+                
+                // Redirect to receipt
+                window.location.href = `/sales/${result.sale_id}/receipt/`;
+            } else {
+                alert('Xatolik: ' + result.error);
+            }
+        } catch (error) {
+            alert('Xatolik yuz berdi: ' + error);
+        }
+    }
+    
+    // Initialize
+    selectPaymentMethod('cash');
+</script>
+{% endblock %}

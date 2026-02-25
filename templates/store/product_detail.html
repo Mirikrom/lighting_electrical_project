@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ product.name }} - Lustra & Lempala{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        {% if variant.image %}
+            <img src="{{ variant.image.url }}" class="img-fluid rounded" alt="{{ product.name }}">
+        {% elif product.image %}
+            <img src="{{ product.image.url }}" class="img-fluid rounded" alt="{{ product.name }}">
+        {% else %}
+            <div class="bg-light d-flex align-items-center justify-content-center" style="height: 400px; border-radius: 15px;">
+                <i class="bi bi-image" style="font-size: 8rem; color: #ccc;"></i>
+            </div>
+        {% endif %}
+    </div>
+    <div class="col-md-6">
+        <h1 class="display-4 fw-bold mb-3">{{ product.name }}</h1>
+        <p class="text-muted mb-3">
+            <i class="bi bi-tag"></i> Kategoriya: <strong>{{ product.category.name }}</strong>
+        </p>
+        {% if product.description %}
+        <div class="mb-4">
+            <h5>Tavsif:</h5>
+            <p>{{ product.description }}</p>
+        </div>
+        {% endif %}
+        
+        {% if variant %}
+        {% if all_variants %}
+        <div class="mb-4 mt-4">
+            <h5><i class="bi bi-palette"></i> Barcha variantlar (rang, narx, qoldiq)</h5>
+            <div class="table-responsive">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Rang</th>
+                            <th>Narx (so'm)</th>
+                            <th>Qoldiq</th>
+                            <th>Amallar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in all_variants %}
+                        <tr>
+                            <td>
+                                {% for av in v.attribute_values.all %}
+                                    {% if av.attribute.name == 'color' %}<span class="badge bg-secondary">{{ av.value }}</span>{% endif %}
+                                {% endfor %}
+                                {% if not v.attribute_values.all %}-{% endif %}
+                            </td>
+                            <td>{{ v.price|floatformat:0 }} so'm</td>
+                            <td>{{ v.stock_quantity }} dona</td>
+                            <td>
+                                <a href="{% url 'store:create_sale' %}?product_id={{ v.id }}" class="btn btn-sm btn-primary">Sotish</a>
+                                <form method="post" action="{% url 'store:delete_product' v.pk %}?next={% url 'store:product_list_old' %}" style="display: inline;" onsubmit="return confirm('Ushbu variantni o\'chirishni tasdiqlaysizmi?');">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="next" value="{% url 'store:product_list_old' %}">
+                                    <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        <div class="d-flex gap-2">
+            <a href="{% url 'store:product_list_old' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Orqaga
+            </a>
+            <a href="{% url 'store:create_sale' %}?product_id={{ variant.id }}" class="btn btn-primary">
+                <i class="bi bi-cart-plus"></i> Sotish
+            </a>
+            <form method="post" action="{% url 'store:delete_product' variant.pk %}?next={% url 'store:product_list_old' %}" style="display: inline;" onsubmit="return confirm('{{ product.name }} mahsulotini o\'chirishni tasdiqlaysizmi? Bu amalni qaytarib bo\'lmaydi!');">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'store:product_list_old' %}">
+                <button type="submit" class="btn btn-danger">
+                    <i class="bi bi-trash"></i> O'chirish
+                </button>
+            </form>
+        </div>
+        {% else %}
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i> Bu mahsulot uchun variant topilmadi.
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'store:product_list_old' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Orqaga
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

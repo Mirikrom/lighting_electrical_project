@@ -1,0 +1,1205 @@
+{% extends 'base.html' %}
+
+{% block title %}Yangi Mahsulot Qo'shish - Lustra & Lempala{% endblock %}
+
+{% block extra_css %}
+<style>
+    .product-form-container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 15px;
+    }
+    
+    .form-header {
+        text-align: center;
+        margin-bottom: 20px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid var(--primary-color);
+    }
+    
+    .form-header h1 {
+        color: var(--primary-color);
+        font-weight: 700;
+        margin-bottom: 5px;
+        font-size: 1.5rem;
+    }
+    
+    .form-header p {
+        font-size: 0.85rem;
+        margin: 0;
+    }
+    
+    .form-group {
+        margin-bottom: 15px;
+    }
+    
+    .form-label {
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 5px;
+        display: block;
+        font-size: 13px;
+    }
+    
+    .form-label .required {
+        color: #ef4444;
+        margin-left: 2px;
+    }
+    
+    .form-control, .form-select {
+        border: 1.5px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 14px;
+        transition: all 0.2s;
+        background: #fff;
+    }
+    
+    .form-control:focus, .form-select:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+        outline: none;
+    }
+    
+    .form-control:hover, .form-select:hover {
+        border-color: #d1d5db;
+    }
+    
+    .input-group {
+        display: flex;
+        gap: 0;
+        align-items: stretch;
+    }
+    
+    .input-group .form-control {
+        border-top-right-radius: 0;
+        border-bottom-right-radius: 0;
+        border-right: none;
+        flex: 1;
+    }
+    
+    .input-group .form-select {
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+        border-left: 1.5px solid #e5e7eb;
+        max-width: 100px;
+    }
+    
+    .input-group .form-control:focus {
+        border-right: none;
+    }
+    
+    .input-group .form-select:focus {
+        border-left: 1.5px solid var(--primary-color);
+    }
+    
+    .input-group-category {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+    }
+    
+    .input-group-category .form-select {
+        flex: 1;
+    }
+    
+    .btn-add-category {
+        border-radius: 8px;
+        padding: 8px 15px;
+        white-space: nowrap;
+        font-size: 13px;
+    }
+    
+    .new-category-input {
+        margin-top: 8px;
+    }
+    
+    .image-upload-area {
+        border: 2px dashed #d1d5db;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+        background: #f9fafb;
+        transition: all 0.2s;
+        cursor: pointer;
+    }
+    
+    .image-upload-area:hover {
+        border-color: var(--primary-color);
+        background: #f3f4f6;
+    }
+    
+    .image-upload-area.has-image {
+        border-color: var(--primary-color);
+        background: #fff;
+    }
+    
+    .image-upload-area i {
+        font-size: 32px !important;
+    }
+    
+    .image-upload-area p {
+        font-size: 13px !important;
+        margin: 5px 0 !important;
+    }
+    
+    .image-preview-container {
+        margin-top: 10px;
+        display: none;
+    }
+    
+    .image-preview-container.show {
+        display: block;
+    }
+    
+    .image-preview {
+        max-width: 100%;
+        max-height: 200px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    .profit-display {
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        padding: 12px 15px;
+        border-radius: 8px;
+        margin-top: 12px;
+        display: none;
+    }
+    
+    .profit-display.show {
+        display: block;
+    }
+    
+    .profit-display.warning {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+    }
+    
+    .profit-display.danger {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+    }
+    
+    .profit-display h5 {
+        margin: 0 0 5px 0;
+        font-size: 12px;
+        opacity: 0.9;
+    }
+    
+    .profit-display .profit-amount {
+        font-size: 20px;
+        font-weight: 700;
+        margin: 0;
+    }
+    
+    .profit-display .profit-percent {
+        font-size: 13px;
+        opacity: 0.9;
+        margin-top: 3px;
+    }
+    
+    .form-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid #e5e7eb;
+    }
+    
+    .btn-submit {
+        flex: 1;
+        padding: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        border: none;
+        color: white;
+        transition: all 0.2s;
+    }
+    
+    .btn-submit:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(99, 102, 241, 0.3);
+    }
+    
+    .btn-cancel {
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 8px;
+        border: 1.5px solid #d1d5db;
+        background: white;
+        color: #6b7280;
+        transition: all 0.2s;
+    }
+    
+    .btn-cancel:hover {
+        border-color: #9ca3af;
+        background: #f9fafb;
+    }
+    
+    .help-text {
+        font-size: 11px;
+        color: #6b7280;
+        margin-top: 3px;
+    }
+    
+    .section-divider {
+        height: 1px;
+        background: linear-gradient(to right, transparent, #e5e7eb, transparent);
+        margin: 15px 0;
+    }
+    
+    textarea.form-control {
+        resize: vertical;
+        min-height: 80px;
+    }
+    
+    /* Autocomplete styles */
+    .autocomplete-container {
+        position: relative;
+    }
+    
+    .autocomplete-suggestions {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1.5px solid #e5e7eb;
+        border-radius: 8px;
+        margin-top: 5px;
+        max-height: 300px;
+        overflow-y: auto;
+        z-index: 1000;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        display: none;
+    }
+    
+    .autocomplete-suggestions.show {
+        display: block;
+    }
+    
+    .autocomplete-item {
+        padding: 10px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f3f4f6;
+        transition: background 0.2s;
+    }
+    
+    .autocomplete-item:last-child {
+        border-bottom: none;
+    }
+    
+    .autocomplete-item:hover {
+        background: #f9fafb;
+    }
+    
+    .autocomplete-item.active {
+        background: #eff6ff;
+    }
+    
+    .autocomplete-item-name {
+        font-weight: 600;
+        color: #1f2937;
+        font-size: 14px;
+    }
+    
+    .autocomplete-item-details {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 3px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="product-form-container">
+    <div class="form-header">
+        <h1><i class="bi bi-plus-circle-fill"></i> Yangi Mahsulot Qo'shish</h1>
+        <p class="text-muted">Barcha maydonlarni to'ldiring va mahsulotni saqlang</p>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" id="productForm">
+        {% csrf_token %}
+        
+        <!-- Mahsulot nomi -->
+        <div class="form-group">
+            <label for="name" class="form-label">
+                Mahsulot nomi <span class="required">*</span>
+            </label>
+            <div class="autocomplete-container">
+                <input type="text" class="form-control" id="name" name="name" required 
+                        autocomplete="off">
+                <div class="autocomplete-suggestions" id="nameSuggestions"></div>
+            </div>
+            <!-- <span class="help-text">Bazadagi mavjud mahsulotlarni ko'rish uchun yozing</span> -->
+        </div>
+
+        <!-- Kategoriya -->
+        <div class="form-group">
+            <label class="form-label">
+                Kategoriya <span class="required">*</span>
+            </label>
+            <div class="input-group-category">
+                <select class="form-select" id="category" name="category">
+                    <option value="">Mavjud kategoriyani tanlang...</option>
+                    {% for category in categories %}
+                        <option value="{{ category.id }}">{{ category.name }}</option>
+                    {% endfor %}
+                </select>
+                <button type="button" class="btn btn-primary btn-add-category" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+                    <i class="bi bi-plus-lg"></i> Yangi
+                </button>
+            </div>
+            <div class="new-category-input">
+                <input type="text" class="form-control" id="new_category" name="new_category" 
+                      ">
+                <!-- <span class="help-text">Agar kategoriya ro'yxatda bo'lmasa, bu yerga yangi kategoriya nomini kiriting</span> -->
+            </div>
+        </div>
+
+        <!-- Mavjud variantlar (faqat mavjud mahsulot tanlanganda) -->
+        <div class="form-group" id="existingVariantsGroup" style="display: none;">
+            <label class="form-label">Mavjud variantlar (rang, narx, qoldiq)</label>
+            <div id="existingVariantsList" style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; font-size: 13px;"></div>
+            <p style="color: #6b7280; font-size: 12px; margin-top: 6px;">Yangi rang qo'shish uchun pastda yangi rangni tanlang yoki yozing.</p>
+        </div>
+
+        <!-- Rang -->
+        <div class="form-group">
+            <label class="form-label">
+                Rang
+            </label>
+            <div class="input-group-category">
+                <select class="form-select" id="color" name="color">
+                    <option value="">Mavjud rangni tanlang...</option>
+                    {% for color in colors %}
+                        <option value="{{ color }}">{{ color }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="new-category-input">
+                <input type="text" class="form-control" id="new_color" name="new_color" 
+                       placeholder="Yangi rang nomini kiriting...">
+                <!-- <span class="help-text">Agar rang ro'yxatda bo'lmasa, bu yerga yangi rang nomini kiriting</span> -->
+            </div>
+        </div>
+
+        <!-- SKU -->
+        <div class="form-group">
+            <label for="sku" class="form-label">KOD</label>
+            <input type="text" class="form-control" id="sku" name="sku" 
+                   placeholder="Avtomatik yaratiladi">
+            <!-- <span class="help-text">Agar bo'sh qoldirilsa, avtomatik yaratiladi</span> -->
+        </div>
+
+        <div class="section-divider"></div>
+
+        <!-- Narxlar -->
+        <div class="form-group">
+            <label for="cost_price" class="form-label">
+                Kirib kelish narxi <span class="required">*</span>
+            </label>
+            <div class="input-group">
+                <input type="number" class="form-control" id="cost_price" name="cost_price" 
+                       step="0.01" min="0.01" required placeholder="0.00">
+                <select class="form-select" id="cost_currency" name="cost_currency" style="max-width: 100px;">
+                    <option value="USD">USD</option>
+                    <option value="UZS">UZS</option>
+                </select>
+            </div>
+            <!-- <span class="help-text">Mahsulotning xarid narxi</span> -->
+            <input type="hidden" id="cost_price_uzs" name="cost_price_uzs">
+        </div>
+
+        <div class="form-group">
+            <label for="price" class="form-label">
+                Sotish narxi <span class="required">*</span>
+            </label>
+            <div class="input-group">
+                <input type="number" class="form-control" id="price" name="price" 
+                       step="0.01" min="0.01" required placeholder="0.00">
+                <select class="form-select" id="price_currency" name="price_currency" style="max-width: 100px;">
+                    <option value="USD">USD</option>
+                    <option value="UZS">UZS</option>
+                </select>
+            </div>
+            <!-- <span class="help-text">Mijozga sotiladigan narx</span> -->
+            <input type="hidden" id="price_uzs" name="price_uzs">
+        </div>
+
+        <!-- Foyda ko'rsatkich -->
+        <!-- <div class="profit-display" id="profitDisplay">
+            <h5><i class="bi bi-graph-up-arrow"></i> Foyda</h5>
+            <p class="profit-amount" id="profitAmount">0 so'm</p>
+            <p class="profit-percent" id="profitPercent">0%</p>
+        </div> -->
+
+        <div class="section-divider"></div>
+
+        <!-- Qancha kelgan (faqat mavjud mahsulot uchun) -->
+        <div class="form-group" id="quantityReceivedGroup" style="display: none;">
+            <label for="quantity_received" class="form-label">
+                Qancha kelgan (dona) <span class="required">*</span>
+            </label>
+            <input type="number" class="form-control" id="quantity_received" 
+                   name="quantity_received" min="1" value="" disabled>
+            <span class="help-text" id="currentStockInfo" style="display: none; color: #6b7280; font-size: 12px; margin-top: 5px;"></span>
+        </div>
+
+        <!-- Ombordagi miqdor (faqat yangi mahsulot uchun) -->
+        <div class="form-group" id="stockQuantityGroup">
+            <label for="stock_quantity" class="form-label">
+                Ombordagi miqdor (dona) <span class="required">*</span>
+            </label>
+            <input type="number" class="form-control" id="stock_quantity" 
+                   name="stock_quantity" min="0" value="0" required>
+            <!-- <span class="help-text">Mahsulotning ombordagi soni</span> -->
+        </div>
+        
+        <!-- Hidden field for existing product ID -->
+        <input type="hidden" id="existing_product_id" name="existing_product_id" value="">
+
+        <div class="section-divider"></div>
+
+        <!-- Rasm -->
+        <div class="form-group">
+            <label class="form-label">Mahsulot rasmi</label>
+            <div class="image-upload-area" onclick="document.getElementById('image').click()">
+                <input type="file" class="d-none" id="image" name="image" accept="image/*" onchange="previewImage(this)">
+                <div id="uploadPlaceholder">
+                    <i class="bi bi-cloud-upload" style="font-size: 32px; color: #9ca3af; margin-bottom: 5px;"></i>
+                    <p style="margin: 0; color: #6b7280; font-weight: 500; font-size: 13px;">Rasm yuklash uchun bosing</p>
+                    <span class="help-text" style="font-size: 11px;">Yoki faylni bu yerga sudrab tashlang</span>
+                </div>
+                <div class="image-preview-container" id="imagePreviewContainer">
+                    <img id="imagePreview" class="image-preview" alt="Preview">
+                </div>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <!-- Tavsif -->
+        <div class="form-group">
+            <label for="description" class="form-label">Mahsulot tavsifi</label>
+            <textarea class="form-control" id="description" name="description" 
+                      rows="4" placeholder="Mahsulot haqida batafsil ma'lumot kiriting..."></textarea>
+            <span class="help-text">Ixtiyoriy</span>
+        </div>
+
+        <!-- Submit buttons -->
+        <div class="form-actions">
+            <a href="{% url 'store:product_list' %}" class="btn-cancel">
+                <i class="bi bi-x-circle"></i> Bekor qilish
+            </a>
+            <button type="submit" class="btn-submit">
+                <i class="bi bi-check-circle-fill"></i> Mahsulotni Saqlash
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Add Category Modal -->
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 15px; border: none;">
+            <div class="modal-header" style="border-bottom: 2px solid #e5e7eb; padding: 20px;">
+                <h5 class="modal-title" style="font-weight: 600;">
+                    <i class="bi bi-plus-circle"></i> Yangi Kategoriya Qo'shish
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <div class="form-group">
+                    <label for="modalCategoryName" class="form-label">
+                        Kategoriya nomi <span class="required">*</span>
+                    </label>
+                    <input type="text" class="form-control" id="modalCategoryName" 
+                           placeholder="Masalan: Lustralar">
+                </div>
+                <div class="form-group">
+                    <label for="modalCategoryDesc" class="form-label">Tavsif</label>
+                    <textarea class="form-control" id="modalCategoryDesc" rows="3" 
+                              placeholder="Kategoriya haqida qisqacha ma'lumot..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 2px solid #e5e7eb; padding: 20px;">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="border-radius: 10px;">
+                    Bekor qilish
+                </button>
+                <button type="button" class="btn btn-primary" onclick="addCategory()" style="border-radius: 10px;">
+                    <i class="bi bi-check-circle"></i> Qo'shish
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Autocomplete for product name
+    let autocompleteTimeout;
+    let selectedIndex = -1;
+    let suggestions = [];
+    
+    const nameInput = document.getElementById('name');
+    const suggestionsContainer = document.getElementById('nameSuggestions');
+    
+    let autoSelectTimeout;
+    
+    nameInput.addEventListener('input', function() {
+        const query = this.value.trim();
+        const currentValue = query.toLowerCase(); // Case-insensitive comparison
+        
+        clearTimeout(autocompleteTimeout);
+        clearTimeout(autoSelectTimeout);
+        
+        // If existing product is selected and name is changed, reset to new product mode
+        const existingProductId = document.getElementById('existing_product_id').value;
+        if (existingProductId && existingProductId !== '' && existingProductId !== '0') {
+            // Check if current name matches selected product name (case-insensitive)
+            if (selectedProductName && currentValue !== selectedProductName.toLowerCase()) {
+                // Name was changed, reset to new product mode
+                resetFormForNewProduct();
+                selectedProductName = '';
+            }
+        }
+        
+        if (query.length < 2) {
+            suggestionsContainer.classList.remove('show');
+            // If name is cleared, reset form
+            if (query === '') {
+                resetFormForNewProduct();
+                selectedProductName = '';
+            }
+            return;
+        }
+        
+        autocompleteTimeout = setTimeout(() => {
+            searchProducts(query);
+            
+            // After search completes, wait a bit more before auto-selecting
+            // This allows user to continue typing
+            autoSelectTimeout = setTimeout(() => {
+                checkForExactMatch();
+            }, 500); // Wait 500ms after search completes
+        }, 300);
+    });
+    
+    function checkForExactMatch() {
+        const currentValue = nameInput.value.trim().toLowerCase();
+        const existingProductId = document.getElementById('existing_product_id').value;
+        
+        // Only auto-select if no product is currently selected
+        if (!existingProductId || existingProductId === '' || existingProductId === '0') {
+            if (suggestions.length > 0) {
+                const exactMatch = suggestions.find(p => p.name.toLowerCase() === currentValue);
+                if (exactMatch) {
+                    // Exact match found - automatically select it
+                    selectSuggestion(exactMatch);
+                }
+            }
+        }
+    }
+    
+    nameInput.addEventListener('keydown', function(e) {
+        if (!suggestionsContainer.classList.contains('show')) return;
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
+            updateSelection();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedIndex = Math.max(selectedIndex - 1, -1);
+            updateSelection();
+        } else if (e.key === 'Enter' && selectedIndex >= 0) {
+            e.preventDefault();
+            selectSuggestion(suggestions[selectedIndex]);
+        } else if (e.key === 'Escape') {
+            suggestionsContainer.classList.remove('show');
+        }
+    });
+    
+    function searchProducts(query) {
+        fetch(`{% url 'store:search_products_autocomplete' %}?q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                suggestions = data.products || [];
+                displaySuggestions(suggestions);
+                
+                // Don't auto-select here - let checkForExactMatch handle it after user stops typing
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                suggestions = [];
+                suggestionsContainer.classList.remove('show');
+            });
+    }
+    
+    function displaySuggestions(products) {
+        if (products.length === 0) {
+            suggestionsContainer.classList.remove('show');
+            return;
+        }
+        
+        suggestionsContainer.innerHTML = products.map((product, index) => `
+            <div class="autocomplete-item" data-index="${index}" onclick="selectSuggestion(${JSON.stringify(product).replace(/"/g, '&quot;')})">
+                <div class="autocomplete-item-name">${highlightMatch(product.name, nameInput.value)}</div>
+                <div class="autocomplete-item-details">
+                    SKU: ${product.sku} | ${parseFloat(product.price).toLocaleString()} so'm | ${product.category}
+                    ${product.description ? ' | ' + product.description.substring(0, 30) + (product.description.length > 30 ? '...' : '') : ''}
+                </div>
+            </div>
+        `).join('');
+        
+        suggestionsContainer.classList.add('show');
+        selectedIndex = -1;
+    }
+    
+    function highlightMatch(text, query) {
+        if (!query) return text;
+        const regex = new RegExp(`(${query})`, 'gi');
+        return text.replace(regex, '<strong>$1</strong>');
+    }
+    
+    function updateSelection() {
+        const items = suggestionsContainer.querySelectorAll('.autocomplete-item');
+        items.forEach((item, index) => {
+            if (index === selectedIndex) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
+    }
+    
+    // Store original product name when selected
+    let selectedProductName = '';
+    
+    function selectSuggestion(product) {
+        nameInput.value = product.name;
+        selectedProductName = product.name; // Store original name
+        suggestionsContainer.classList.remove('show');
+        selectedIndex = -1;
+        
+        // Yangi variant qo'shish uchun har doim Product ID yuboramiz (variant ustiga yozilmasin)
+        const productId = product.product_id != null ? product.product_id : product.id;
+        document.getElementById('existing_product_id').value = productId;
+        
+        // Fill category (disable)
+        if (product.category_id) {
+            document.getElementById('category').value = product.category_id;
+            document.getElementById('category').disabled = true;
+            document.getElementById('new_category').style.display = 'none';
+            // Load colors for this category
+            loadColorsByCategory(product.category_id);
+        }
+        
+        // Clear color inputs (user will select new color)
+        document.getElementById('color').value = '';
+        document.getElementById('new_color').value = '';
+        document.getElementById('color').disabled = false;
+        document.getElementById('new_color').disabled = false;
+        document.getElementById('color').style.display = 'block';
+        document.getElementById('new_color').style.display = 'block';
+        
+        // Fill prices from first variant (for reference, but disabled)
+        const USD_RATE = 12500;
+        if (product.cost_price) {
+            const costPriceUZS = parseFloat(product.cost_price);
+            const costPriceUSD = costPriceUZS / USD_RATE;
+            document.getElementById('cost_price').value = costPriceUSD.toFixed(2);
+            document.getElementById('cost_currency').value = 'USD';
+        }
+        
+        if (product.price) {
+            const priceUZS = parseFloat(product.price);
+            const priceUSD = priceUZS / USD_RATE;
+            document.getElementById('price').value = priceUSD.toFixed(2);
+            document.getElementById('price_currency').value = 'USD';
+        }
+        
+        // Narx maydonlarini ochiq qoldirish — yangi variant uchun narx kiritish mumkin
+        document.getElementById('cost_price').disabled = false;
+        document.getElementById('cost_currency').disabled = false;
+        document.getElementById('price').disabled = false;
+        document.getElementById('price_currency').disabled = false;
+        
+        // Disable other inputs
+        document.getElementById('description').disabled = true;
+        document.getElementById('sku').disabled = true;
+        document.getElementById('stock_quantity').disabled = true;
+        
+        // Show stock quantity input (for new variant), hide quantity received
+        document.getElementById('quantityReceivedGroup').style.display = 'none';
+        document.getElementById('stockQuantityGroup').style.display = 'block';
+        document.getElementById('stock_quantity').required = true;
+        document.getElementById('stock_quantity').value = '';
+        document.getElementById('stock_quantity').disabled = false; // Enable for new variant
+        
+        // Hide current stock info
+        document.getElementById('currentStockInfo').style.display = 'none';
+        
+        // Show message that this is for adding new color variant
+        const colorGroup = document.querySelector('.form-group:has(#color)');
+        if (colorGroup) {
+            let infoMsg = colorGroup.querySelector('.variant-info-msg');
+            if (!infoMsg) {
+                infoMsg = document.createElement('div');
+                infoMsg.className = 'variant-info-msg';
+                infoMsg.style.cssText = 'color: #3b82f6; font-size: 12px; margin-top: 5px; font-style: italic;';
+                colorGroup.appendChild(infoMsg);
+            }
+            infoMsg.textContent = 'Yangi rang variantini qo\'shish uchun rangni tanlang yoki yozing';
+        }
+        // Mavjud variantlarni yuklash va ko'rsatish (rang, narx, qoldiq)
+        loadExistingVariants(productId);
+        // Calculate profit
+        calculateProfit();
+    }
+    
+    function loadExistingVariants(productId) {
+        const group = document.getElementById('existingVariantsGroup');
+        const listEl = document.getElementById('existingVariantsList');
+        if (!group || !listEl) return;
+        if (!productId) {
+            group.style.display = 'none';
+            return;
+        }
+        const variantsUrl = "{% url 'store:product_variants_json' product_id=1 %}".replace(/\/1\//, '/' + productId + '/');
+        fetch(variantsUrl)
+            .then(res => res.json())
+            .then(data => {
+                if (data.variants && data.variants.length > 0) {
+                    group.style.display = 'block';
+                    listEl.innerHTML = '<table style="width:100%; border-collapse: collapse;"><thead><tr><th style="text-align:left; padding:6px 8px;">Rang</th><th style="text-align:left; padding:6px 8px;">Narx (so\'m)</th><th style="text-align:left; padding:6px 8px;">Qoldiq</th></tr></thead><tbody>' +
+                        data.variants.map(v => `<tr><td style="padding:6px 8px;">${v.color || '-'}</td><td style="padding:6px 8px;">${parseFloat(v.price).toLocaleString()}</td><td style="padding:6px 8px;">${v.stock} dona</td></tr>`).join('') +
+                        '</tbody></table>';
+                } else {
+                    group.style.display = 'none';
+                }
+            })
+            .catch(() => { group.style.display = 'none'; });
+    }
+    
+    
+    function resetFormForNewProduct() {
+        document.getElementById('existing_product_id').value = '';
+        const existingVariantsGroup = document.getElementById('existingVariantsGroup');
+        if (existingVariantsGroup) existingVariantsGroup.style.display = 'none';
+        
+        // Enable all inputs
+        document.getElementById('category').disabled = false;
+        document.getElementById('color').disabled = false;
+        document.getElementById('new_color').disabled = false;
+        document.getElementById('cost_price').disabled = false;
+        document.getElementById('cost_currency').disabled = false;
+        document.getElementById('price').disabled = false;
+        document.getElementById('price_currency').disabled = false;
+        document.getElementById('description').disabled = false;
+        document.getElementById('sku').disabled = false;
+        document.getElementById('stock_quantity').disabled = false;
+        
+        // Show all inputs
+        document.getElementById('category').style.display = 'block';
+        document.getElementById('new_category').style.display = 'block';
+        document.getElementById('color').style.display = 'block';
+        document.getElementById('new_color').style.display = 'block';
+        
+        // Clear color inputs
+        document.getElementById('color').value = '';
+        document.getElementById('new_color').value = '';
+        
+        // Show stock quantity input, hide quantity received
+        document.getElementById('quantityReceivedGroup').style.display = 'none';
+        document.getElementById('stockQuantityGroup').style.display = 'block';
+        const quantityReceivedInput = document.getElementById('quantity_received');
+        quantityReceivedInput.disabled = true;
+        quantityReceivedInput.required = false;
+        quantityReceivedInput.value = '';
+        document.getElementById('stock_quantity').required = true;
+        
+        // Hide current stock info
+        document.getElementById('currentStockInfo').style.display = 'none';
+    }
+    
+    // Close suggestions when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!nameInput.contains(e.target) && !suggestionsContainer.contains(e.target)) {
+            suggestionsContainer.classList.remove('show');
+        }
+    });
+    
+    // Image preview
+    function previewImage(input) {
+        const preview = document.getElementById('imagePreview');
+        const container = document.getElementById('imagePreviewContainer');
+        const placeholder = document.getElementById('uploadPlaceholder');
+        const uploadArea = document.querySelector('.image-upload-area');
+        
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                preview.src = e.target.result;
+                container.classList.add('show');
+                placeholder.style.display = 'none';
+                uploadArea.classList.add('has-image');
+            };
+            reader.readAsDataURL(input.files[0]);
+        } else {
+            container.classList.remove('show');
+            placeholder.style.display = 'block';
+            uploadArea.classList.remove('has-image');
+        }
+    }
+    
+    // Currency conversion
+    const USD_RATE = 12500; // 1 USD = 12500 UZS
+    
+    function convertToUZS(amount, currency) {
+        if (currency === 'USD') {
+            return amount * USD_RATE;
+        }
+        return amount;
+    }
+    
+    function formatCurrency(amount, currency) {
+        if (currency === 'USD') {
+            return amount.toLocaleString('uz-UZ', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' $';
+        }
+        return amount.toLocaleString('uz-UZ') + ' so\'m';
+    }
+    
+    // Calculate profit
+    function calculateProfit() {
+        const costPrice = parseFloat(document.getElementById('cost_price').value) || 0;
+        const costCurrency = document.getElementById('cost_currency').value;
+        const sellPrice = parseFloat(document.getElementById('price').value) || 0;
+        const priceCurrency = document.getElementById('price_currency').value;
+        const profitDisplay = document.getElementById('profitDisplay');
+        const profitAmount = document.getElementById('profitAmount');
+        const profitPercent = document.getElementById('profitPercent');
+        
+        // Check if elements exist before using them
+        if (!profitDisplay || !profitAmount || !profitPercent) {
+            return; // Exit if elements don't exist
+        }
+        
+        if (costPrice > 0 && sellPrice > 0) {
+            // Convert both to UZS for calculation
+            const costPriceUZS = convertToUZS(costPrice, costCurrency);
+            const sellPriceUZS = convertToUZS(sellPrice, priceCurrency);
+            
+            const profit = sellPriceUZS - costPriceUZS;
+            const profitPercentValue = costPriceUZS > 0 ? ((profit / costPriceUZS) * 100).toFixed(2) : 0;
+            
+            profitAmount.textContent = formatCurrency(profit, 'UZS');
+            profitPercent.textContent = profitPercentValue + '% foyda';
+            
+            // Update hidden fields for form submission (if they exist)
+            const costPriceUzsField = document.getElementById('cost_price_uzs');
+            const priceUzsField = document.getElementById('price_uzs');
+            if (costPriceUzsField) costPriceUzsField.value = costPriceUZS;
+            if (priceUzsField) priceUzsField.value = sellPriceUZS;
+            
+            // Update styling
+            profitDisplay.classList.remove('warning', 'danger');
+            profitDisplay.classList.add('show');
+            
+            if (profit < 0) {
+                profitDisplay.classList.add('danger');
+            } else if (parseFloat(profitPercentValue) < 10) {
+                profitDisplay.classList.add('warning');
+            }
+        } else {
+            profitDisplay.classList.remove('show');
+        }
+    }
+    
+    // Add category via AJAX
+    async function addCategory() {
+        const name = document.getElementById('modalCategoryName').value.trim();
+        const description = document.getElementById('modalCategoryDesc').value.trim();
+        
+        if (!name) {
+            alert('Kategoriya nomi kiritilishi shart!');
+            return;
+        }
+        
+        try {
+            function getCookie(name) {
+                let cookieValue = null;
+                if (document.cookie && document.cookie !== '') {
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i].trim();
+                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return cookieValue;
+            }
+            
+            const csrftoken = getCookie('csrftoken');
+            
+            const response = await fetch('{% url "store:create_category_ajax" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({
+                    name: name,
+                    description: description
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Add to select dropdown
+                const select = document.getElementById('category');
+                const option = document.createElement('option');
+                option.value = result.category.id;
+                option.textContent = result.category.name;
+                option.selected = true;
+                select.appendChild(option);
+                
+                // Clear modal inputs
+                document.getElementById('modalCategoryName').value = '';
+                document.getElementById('modalCategoryDesc').value = '';
+                
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addCategoryModal'));
+                modal.hide();
+                
+                // Clear new category input
+                document.getElementById('new_category').value = '';
+                
+                alert('Kategoriya muvaffaqiyatli qo\'shildi!');
+            } else {
+                alert('Xatolik: ' + result.error);
+            }
+        } catch (error) {
+            alert('Xatolik yuz berdi: ' + error);
+        }
+    }
+    
+    // Event listeners
+    document.getElementById('cost_price').addEventListener('input', calculateProfit);
+    document.getElementById('price').addEventListener('input', calculateProfit);
+    document.getElementById('cost_currency').addEventListener('change', calculateProfit);
+    document.getElementById('price_currency').addEventListener('change', calculateProfit);
+    
+    // Category selection logic
+    document.getElementById('category').addEventListener('change', function() {
+        if (this.value) {
+            document.getElementById('new_category').value = '';
+            document.getElementById('new_category').style.display = 'none'; // Hide new category input
+            // Load colors for selected category
+            loadColorsByCategory(this.value);
+        } else {
+            // If no category selected, show all colors and show new category input
+            document.getElementById('new_category').style.display = 'block';
+            loadAllColors();
+        }
+    });
+    
+    function loadColorsByCategory(categoryId) {
+        fetch(`{% url 'store:get_colors_by_category' %}?category_id=${categoryId}`)
+            .then(response => response.json())
+            .then(data => {
+                const colorSelect = document.getElementById('color');
+                const newColorInput = document.getElementById('new_color');
+                const currentValue = colorSelect.value;
+                
+                // Clear existing options except the first one
+                colorSelect.innerHTML = '<option value="">Mavjud rangni tanlang...</option>';
+                
+                // Add colors for this category
+                data.colors.forEach(color => {
+                    const option = document.createElement('option');
+                    option.value = color;
+                    option.textContent = color;
+                    colorSelect.appendChild(option);
+                });
+                
+                // Check if previous selection still exists in new category
+                if (currentValue) {
+                    const optionExists = Array.from(colorSelect.options).some(opt => opt.value === currentValue);
+                    if (optionExists) {
+                        // Previous color exists in new category, keep it selected
+                        colorSelect.value = currentValue;
+                        newColorInput.style.display = 'none'; // Hide new color input
+                    } else {
+                        // Previous color doesn't exist in new category
+                        colorSelect.value = '';
+                        // Show new color input so user can add the color
+                        newColorInput.style.display = 'block';
+                        newColorInput.value = currentValue; // Pre-fill with previous color value
+                    }
+                } else {
+                    // No previous selection, show new color input
+                    newColorInput.style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading colors:', error);
+            });
+    }
+    
+    function loadAllColors() {
+        // Load all colors (initial state)
+        // This would require another endpoint or we can keep the initial colors
+        // For now, we'll just reset to show all colors from initial page load
+        const colorSelect = document.getElementById('color');
+        // Keep current options or reload from server
+    }
+    
+    document.getElementById('new_category').addEventListener('input', function() {
+        if (this.value.trim()) {
+            document.getElementById('category').value = '';
+        }
+    });
+    
+    // Color selection logic
+    document.getElementById('color').addEventListener('change', function() {
+        if (this.value) {
+            document.getElementById('new_color').value = '';
+            document.getElementById('new_color').style.display = 'none'; // Hide new color input
+        } else {
+            // If no color selected, show new color input
+            document.getElementById('new_color').style.display = 'block';
+        }
+    });
+    
+    document.getElementById('new_color').addEventListener('input', function() {
+        if (this.value.trim()) {
+            document.getElementById('color').value = '';
+            document.getElementById('color').style.display = 'none'; // Hide color select
+        } else {
+            // If new color input is cleared, show color select
+            document.getElementById('color').style.display = 'block';
+        }
+    });
+    
+    // Also handle when new_category input is used
+    document.getElementById('new_category').addEventListener('input', function() {
+        if (this.value.trim()) {
+            document.getElementById('category').value = '';
+            document.getElementById('category').style.display = 'none'; // Hide category select
+        } else {
+            // If new category input is cleared, show category select
+            document.getElementById('category').style.display = 'block';
+        }
+    });
+    
+    // Drag and drop for image
+    const uploadArea = document.querySelector('.image-upload-area');
+    
+    uploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.style.borderColor = 'var(--primary-color)';
+        this.style.background = '#f3f4f6';
+    });
+    
+    uploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        if (!this.classList.contains('has-image')) {
+            this.style.borderColor = '#d1d5db';
+            this.style.background = '#f9fafb';
+        }
+    });
+    
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            document.getElementById('image').files = files;
+            previewImage(document.getElementById('image'));
+        }
+    });
+    
+    // Form validation
+    document.getElementById('productForm').addEventListener('submit', function(e) {
+        const name = document.getElementById('name').value.trim();
+        const category = document.getElementById('category').value;
+        const newCategory = document.getElementById('new_category').value.trim();
+        const costPrice = document.getElementById('cost_price').value;
+        const price = document.getElementById('price').value;
+        const stock = document.getElementById('stock_quantity').value;
+        const existingProductId = document.getElementById('existing_product_id').value;
+        const quantityReceived = document.getElementById('quantity_received').value;
+        
+        // If this is a new product (not updating existing), clear existing_product_id
+        const isUpdatingExisting = existingProductId && existingProductId !== '' && existingProductId !== '0';
+        if (!isUpdatingExisting) {
+            document.getElementById('existing_product_id').value = '';
+        }
+        
+        if (!name) {
+            e.preventDefault();
+            alert('Mahsulot nomi kiritilishi shart!');
+            document.getElementById('name').focus();
+            return false;
+        }
+        
+        if (!category && !newCategory) {
+            e.preventDefault();
+            alert('Kategoriya tanlanishi yoki yangi kategoriya nomi kiritilishi shart!');
+            return false;
+        }
+        
+        // costPrice is optional, but if provided, must be >= 0
+        if (costPrice && parseFloat(costPrice) < 0) {
+            e.preventDefault();
+            alert('Kirib kelish narxi manfiy bo\'lishi mumkin emas!');
+            document.getElementById('cost_price').focus();
+            return false;
+        }
+        
+        // Narx har doim talab qilinadi (yangi mahsulot ham, mavjud mahsulotga yangi variant ham)
+        if (!price || parseFloat(price) <= 0) {
+            e.preventDefault();
+            alert('To\'g\'ri sotish narxi kiritilishi shart!');
+            document.getElementById('price').focus();
+            return false;
+        }
+        
+        // For existing products, quantity_received is required
+        if (isUpdatingExisting) {
+            const quantityReceivedInput = document.getElementById('quantity_received');
+            // Only validate if input is enabled and visible
+            if (!quantityReceivedInput.disabled && quantityReceivedInput.offsetParent !== null) {
+                if (!quantityReceived || parseFloat(quantityReceived) <= 0) {
+                    e.preventDefault();
+                    alert('Qancha kelgan sonini kiriting!');
+                    quantityReceivedInput.focus();
+                    return false;
+                }
+            }
+        } else {
+            // For new products, disable and clear quantity_received to avoid validation errors
+            const quantityReceivedInput = document.getElementById('quantity_received');
+            quantityReceivedInput.disabled = true;
+            quantityReceivedInput.required = false;
+            quantityReceivedInput.value = '';
+            
+            // For new products, stock validation
+            if (stock < 0) {
+                e.preventDefault();
+                alert('Soni manfiy bo\'lishi mumkin emas!');
+                document.getElementById('stock_quantity').focus();
+                return false;
+            }
+        }
+    });
+</script>
+{% endblock %}
