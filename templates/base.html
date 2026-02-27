@@ -2,7 +2,7 @@
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>{% block title %}Lustra & Lempala - Elektr narsalar{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
@@ -15,12 +15,16 @@
             --light-color: #f8fafc;
         }
         
+        * { box-sizing: border-box; }
+        html { overflow-x: hidden; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             margin: 0;
             padding: 0;
+            overflow-x: hidden;
+            max-width: 100vw;
         }
         
         .main-container {
@@ -30,6 +34,7 @@
             margin: 10px;
             padding: 15px;
             min-height: calc(100vh - 20px);
+            max-width: 100%;
         }
         
         .card {
@@ -134,16 +139,116 @@
             color: var(--secondary-color);
             border-color: white;
         }
+        .nav-item-add-product { margin-right: 0.5rem; }
+        .nav-item-logout { margin-left: 0.75rem; }
+        .nav-username-badge {
+            background: rgba(255, 255, 255, 0.25);
+            color: white !important;
+            font-size: 0.9rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            padding: 0.4rem 0.85rem !important;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+        }
+        .site-footer {
+            margin-top: 2rem;
+            padding: 1rem 10px 1.25rem;
+            font-size: 0.8rem;
+            color: #64748b;
+            text-align: center;
+            border-top: 1px solid #e2e8f0;
+        }
+        .site-footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        .site-footer a:hover {
+            text-decoration: underline;
+        }
+        .site-footer .footer-title {
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 0.35rem;
+        }
+        .site-footer .footer-contact {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem 1.5rem;
+            margin-top: 0.5rem;
+        }
+        .site-footer .footer-contact span {
+            white-space: nowrap;
+        }
+        @media (max-width: 991px) {
+            .main-container {
+                margin: 6px;
+                padding: 10px;
+                border-radius: 10px;
+                max-width: 100%;
+            }
+            .navbar-store {
+                padding: 0.4rem 0.75rem;
+                border-radius: 10px;
+            }
+            .navbar-store .navbar-brand {
+                font-size: 1rem;
+            }
+            .navbar-store .nav-link {
+                padding: 0.6rem 0.75rem;
+                font-size: 0.95rem;
+            }
+            .navbar-store .nav-link.nav-link-add {
+                margin-left: 0;
+                margin-top: 0.5rem;
+                text-align: center;
+                display: block;
+            }
+            .navbar-store .navbar-nav:last-child {
+                border-top: 1px solid rgba(255,255,255,0.3);
+                padding-top: 0.5rem;
+                margin-top: 0.25rem;
+            }
+        }
+        @media (max-width: 576px) {
+            html, body { padding: 0; margin: 0; overflow-x: hidden; }
+            .container-fluid {
+                padding: 0 6px;
+                max-width: 100%;
+                overflow-x: hidden;
+            }
+            .main-container {
+                margin: 6px;
+                padding: 10px;
+                min-height: calc(100vh - 12px);
+                border-radius: 8px;
+                max-width: 100%;
+                overflow-x: hidden;
+            }
+            .navbar-store {
+                margin-bottom: 12px;
+                padding: 0.5rem 0.5rem;
+            }
+            .navbar-store .navbar-brand {
+                font-size: 0.9rem;
+            }
+            .navbar-store .nav-link {
+                padding: 0.65rem 0.75rem;
+                font-size: 0.9rem;
+            }
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
     <div class="container-fluid">
         <div class="main-container">
+            {% block navbar %}
             <nav class="navbar navbar-expand-lg navbar-store">
                 <div class="container-fluid">
                     <a class="navbar-brand" href="{% url 'store:product_list' %}">
-                        <i class="bi bi-shop"></i> Lustra & Lempala
+                        <i class="bi bi-shop"></i> {% if user.is_authenticated and user.profile.market %}{{ user.profile.market.name }}{% else %}Lustra & Lempala{% endif %}
                     </a>
                     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation" style="border-color: rgba(255,255,255,0.6);">
                         <span class="navbar-toggler-icon" style="filter: invert(1);"></span>
@@ -172,15 +277,26 @@
                             </li>
                         </ul>
                         <ul class="navbar-nav">
-                            <li class="nav-item">
+                            {% if user.is_authenticated %}
+                            <li class="nav-item align-self-center me-2">
+                                <span class="nav-link nav-username-badge">{{ user.username|upper }}</span>
+                            </li>
+                            {% endif %}
+                            <li class="nav-item nav-item-add-product">
                                 <a class="nav-link nav-link-add {% if request.resolver_match.url_name == 'create_product' %}active{% endif %}" href="{% url 'store:create_product' %}">
                                     <i class="bi bi-plus-circle"></i> Mahsulot qo'shish
                                 </a>
                             </li>
+                            {% if user.is_authenticated %}
+                            <li class="nav-item nav-item-logout">
+                                <a class="nav-link" href="{% url 'store:logout' %}"><i class="bi bi-box-arrow-right"></i> Chiqish</a>
+                            </li>
+                            {% endif %}
                         </ul>
                     </div>
                 </div>
             </nav>
+            {% endblock %}
             {% if messages %}
                 {% for message in messages %}
                     <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
@@ -191,6 +307,21 @@
             {% endif %}
             
             {% block content %}{% endblock %}
+
+            {% block footer %}
+            {% if request.resolver_match.url_name == 'product_list' and request.path == '/' %}
+            <footer class="site-footer">
+                <div class="footer-title">© 2026 Lighting Electrical Project.</div>
+                <div>This system is developed and maintained by <strong>GeekTech IT Company</strong>.</div>
+                <div class="footer-contact">
+                    <span>🌐 <a href="https://geektech.uz" target="_blank" rel="noopener">geektech.uz</a></span>
+                    <span>📞 +998 93 531 94 09</span>
+                    <span>📍 Tashkent, Uzbekistan</span>
+                    <span>✉️ <a href="mailto:info@geektech.uz">info@geektech.uz</a></span>
+                </div>
+            </footer>
+            {% endif %}
+            {% endblock %}
         </div>
     </div>
 

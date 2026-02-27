@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load store_tags %}
 
 {% block title %}Sotuvlar - Lustra & Lempala{% endblock %}
 
@@ -51,7 +52,7 @@
             </div>
             <div class="col-md-6">
                 <h5>Jami summa</h5>
-                <h2>{{ total_sales|floatformat:0 }} so'm</h2>
+                <h2>{{ total_sales|floatformat:0|comma_to_dot }} so'm</h2>
             </div>
         </div>
     </div>
@@ -86,7 +87,7 @@
                     {% endif %}
                 </td>
                 <td>{{ sale.sale_date|date:"d.m.Y H:i" }}</td>
-                <td><strong class="text-success">{{ sale.total_amount|floatformat:0 }} so'm</strong></td>
+                <td><strong class="text-success">{{ sale.total_amount|floatformat:0|comma_to_dot }} so'm</strong></td>
                 <td>
                     {% if sale.payment_method == 'cash' %}
                         <span class="badge bg-success">Naqd</span>

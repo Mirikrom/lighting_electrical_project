@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Ro'yxatdan o'tish — Lustra{% endblock %}
+{% block navbar %}{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-5">
+        <div class="card shadow">
+            <div class="card-body p-4">
+                <h4 class="card-title mb-4 text-center">Ro'yxatdan o'tish</h4>
+                {% if form.non_field_errors %}
+                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                {% endif %}
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="id_username" class="form-label">Login</label>
+                        <input type="text" name="username" id="id_username" class="form-control" value="{{ form.username.value|default:'' }}" required maxlength="150" autofocus>
+                        {% if form.username.errors %}<div class="text-danger small">{{ form.username.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="id_password1" class="form-label">Parol</label>
+                        <input type="password" name="password1" id="id_password1" class="form-control" required>
+                        {% if form.password1.errors %}<div class="text-danger small">{{ form.password1.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="id_password2" class="form-label">Parolni takrorlang</label>
+                        <input type="password" name="password2" id="id_password2" class="form-control" required>
+                        {% if form.password2.errors %}<div class="text-danger small">{{ form.password2.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="id_market_name" class="form-label">Market nomi (ixtiyoriy)</label>
+                        <input type="text" name="market_name" id="id_market_name" class="form-control" value="{{ form.market_name.value|default:'' }}" maxlength="200" placeholder="Bo'sh qoldirsangiz, admin keyin market biriktiradi">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Ro'yxatdan o'tish</button>
+                </form>
+                <hr>
+                <p class="text-center mb-0">
+                    Hisobingiz bormi? <a href="{% url 'store:login' %}">Kirish</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

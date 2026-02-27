@@ -81,23 +81,10 @@ DATABASES = {
 }
 
 
-# Password validation
+# Password validation — oddiy parol (masalan 123) ham qabul qilinadi
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
-]
+AUTH_PASSWORD_VALIDATORS = []
 
 
 # Internationalization
@@ -159,3 +146,8 @@ LOGGING = {
 
 # Currency settings
 USD_TO_UZS_RATE = 12500  # 1 USD = 12500 UZS (so'm)
+
+# Auth
+LOGIN_URL = 'store:login'
+LOGIN_REDIRECT_URL = 'store:product_list'
+LOGOUT_REDIRECT_URL = 'store:login'

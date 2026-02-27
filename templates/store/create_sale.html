@@ -1,9 +1,14 @@
 {% extends 'base.html' %}
+{% load store_tags %}
 
 {% block title %}Kassada - Lustra & Lempala{% endblock %}
 
 {% block extra_css %}
 <style>
+    .pos-container,
+    .pos-container * {
+        box-sizing: border-box;
+    }
     body {
         background: #f5f5f5;
         margin: 0;
@@ -12,60 +17,94 @@
     
     .pos-container {
         max-width: 100%;
+        width: 100%;
         padding: 20px;
+        overflow-x: hidden;
     }
     
-    /* Main Layout */
+    /* Main Layout: chap = qidiruv+tez-tugmalar, o'rta = korzinka, o'ng = sidebar */
     .main-layout {
         display: grid;
-        grid-template-columns: 2fr 1fr;
-        gap: 20px;
+        grid-template-columns: minmax(200px, 280px) 1fr minmax(260px, 320px);
+        gap: 16px;
+        max-width: 100%;
     }
     
-    .left-column {
+    .left-panel {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 12px;
+        min-width: 0;
     }
     
-    /* Header */
+    /* Chap panel: qidiruv va tez-tugmalar */
     .pos-header {
         background: white;
-        padding: 15px 20px;
+        padding: 12px 14px;
         border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
     }
     
     .pos-header-top {
-        display: flex;
-        align-items: center;
-        margin-bottom: 15px;
+        margin-bottom: 0;
     }
     
     .search-section {
-        flex: 1;
+        flex: 0 0 auto;
         margin: 0;
     }
     
     .search-input {
         width: 100%;
-        padding: 12px 15px;
+        padding: 10px 12px;
         border: 2px solid #e5e7eb;
         border-radius: 8px;
-        font-size: 14px;
+        font-size: 13px;
+        box-sizing: border-box;
     }
     
     .top-products-section {
-        margin-top: 15px;
-        padding-top: 15px;
+        margin-top: 0;
+        padding-top: 0;
         border-top: 1px solid #e5e7eb;
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    .top-products-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+    }
+    
+    .top-products-section .quick-products {
+        flex-direction: column;
+        overflow-x: visible;
+        overflow-y: auto;
+        gap: 8px;
+        padding: 4px 0;
+        flex: 1;
+        min-height: 120px;
     }
     
     .quick-products {
         display: flex;
-        gap: 12px;
-        overflow-x: auto;
-        padding: 5px 0;
+        gap: 8px;
+        padding: 4px 0;
+    }
+    
+    .left-panel .quick-product-btn {
+        min-width: 0;
+        width: 100%;
+        padding: 10px 12px;
+        flex-shrink: 0;
     }
     
     .quick-product-btn {
@@ -84,6 +123,14 @@
         border-color: #86efac;
         box-shadow: 0 2px 8px rgba(34, 197, 94, 0.2);
         transform: translateY(-2px);
+    }
+    .quick-product-btn.quick-product-out-of-stock {
+        background: #fef2f2;
+        border-color: #fecaca;
+    }
+    .quick-product-btn.quick-product-out-of-stock .quick-product-details {
+        color: #b91c1c;
+        font-weight: 600;
     }
     
     .quick-product-id {
@@ -115,12 +162,28 @@
     
     /* Main Content - removed, using main-layout instead */
     
-    /* Order Section */
+    /* O'rta: faqat korzinka */
+    .order-column {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    
     .order-section {
         background: white;
         border-radius: 10px;
-        padding: 20px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        padding: 16px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .order-table-wrapper {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
     }
     
     .order-header {
@@ -160,15 +223,45 @@
         background: #dc2626;
     }
     
+    .th-clear {
+        text-align: right;
+        width: 1%;
+        white-space: nowrap;
+        padding-right: 8px;
+    }
+    .btn-clear-cart-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #b91c1c;
+        background: #fee2e2;
+        border: 1px solid #fecaca;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-clear-cart-inline:hover {
+        background: #fecaca;
+        border-color: #f87171;
+        color: #991b1b;
+    }
+    
+    /* Doim 10 ta qator joyi (1 sarlavha + 10 qator), ortiqchasi scroll */
     .order-table-wrapper {
-        max-height: 400px; /* 8 ta mahsulot uchun (har biri ~50px) */
+        height: 570px;
+        min-height: 570px;
+        max-height: 570px;
         overflow-y: auto;
-        overflow-x: hidden;
+        overflow-x: auto;
         margin-bottom: 12px;
     }
     
     .order-table {
         width: 100%;
+        min-width: 400px;
         border-collapse: collapse;
         font-size: 12px;
     }
@@ -248,10 +341,52 @@
         margin-top: 2px;
     }
     
+    .price-edit-cell {
+        cursor: pointer;
+    }
+    .price-edit-cell:hover {
+        background: #f0fdf4;
+    }
+    .price-edit-inline {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+    }
+    .price-edit-inline input {
+        width: 100px;
+        padding: 4px 8px;
+        font-size: 13px;
+        border: 1px solid #10b981;
+        border-radius: 6px;
+    }
+    .price-edit-inline button {
+        padding: 4px 10px;
+        font-size: 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        border: none;
+        font-weight: 600;
+    }
+    .price-edit-save-btn {
+        background: #10b981;
+        color: white;
+    }
+    .price-edit-cancel-btn {
+        background: #e5e7eb;
+        color: #374151;
+    }
+    
     .quantity-controls {
         display: flex;
         align-items: center;
         gap: 5px;
+    }
+    .qty-unit-suffix {
+        margin-left: 4px;
+        font-weight: 600;
+        color: #374151;
+        font-size: 12px;
     }
     
     .qty-btn {
@@ -301,64 +436,104 @@
     
     .order-summary {
         background: #f9fafb;
-        padding: 12px;
+        padding: 8px 10px;
         border-radius: 6px;
-        margin-top: 12px;
     }
     
     .summary-row {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 8px;
-        font-size: 12px;
+        margin-bottom: 4px;
+        font-size: 11px;
     }
     
     .summary-row.total {
-        font-size: 16px;
+        font-size: 13px;
         font-weight: 700;
         color: #16a34a;
-        padding-top: 10px;
-        border-top: 2px solid #e5e7eb;
-        margin-top: 10px;
+        padding-top: 6px;
+        border-top: 1px solid #e5e7eb;
+        margin-top: 4px;
         margin-bottom: 0;
     }
     
     .summary-label {
         color: #6b7280;
         font-weight: 500;
-        font-size: 15px;
+        font-size: 11px;
     }
     
     .summary-value {
         font-weight: 600;
         color: #1f2937;
-        font-size: 20px;
+        font-size: 14px;
         color: #16a34a;
     }
     
     .summary-value.total {
         color: #000000;
-        font-size: 18px;
+        font-size: 14px;
     }
     
     /* Sidebar */
     .sidebar {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
     }
     
-    .operator-info {
-        background: white;
-        padding: 12px;
+    .sidebar-kurs-card {
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        border: 1px solid #bae6fd;
+        padding: 8px 10px;
         border-radius: 6px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        box-shadow: 0 1px 4px rgba(14, 165, 233, 0.1);
     }
-    
-    .operator-text {
-        font-size: 11px;
-        color: #6b7280;
-        margin-bottom: 6px;
+    .sidebar-kurs-form {
+        display: block;
+    }
+    .sidebar-kurs-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .sidebar-kurs-label {
+        font-size: 12px;
+        color: #0369a1;
+        white-space: nowrap;
+        margin: 0;
+    }
+    .sidebar-kurs-input {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 8px;
+        border: 1px solid #7dd3fc;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #0c4a6e;
+        background: #fff;
+        box-sizing: border-box;
+    }
+    .sidebar-kurs-input:focus {
+        outline: none;
+        border-color: #0ea5e9;
+        box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.2);
+    }
+    .sidebar-kurs-btn {
+        flex-shrink: 0;
+        padding: 6px 10px;
+        background: #0ea5e9;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .sidebar-kurs-btn:hover {
+        background: #0284c7;
     }
     
     .report-btn {
@@ -380,26 +555,26 @@
     
     .payment-methods {
         background: white;
-        padding: 12px;
+        padding: 8px 10px;
         border-radius: 6px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
     .payment-methods h3 {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
         color: #1f2937;
     }
     
     .payment-grid {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
-        gap: 6px;
+        gap: 5px;
     }
     
     .payment-btn {
-        padding: 10px 8px;
+        padding: 8px 6px;
         border: 2px solid #e5e7eb;
         background: #f0fdf4;
         border-radius: 6px;
@@ -428,26 +603,26 @@
     
     .action-buttons {
         background: white;
-        padding: 12px;
+        padding: 8px 10px;
         border-radius: 6px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
     .action-buttons h3 {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
         color: #1f2937;
     }
     
     .action-btn {
         width: 100%;
-        padding: 10px;
+        padding: 8px 10px;
         border: none;
         border-radius: 6px;
         font-weight: 600;
         cursor: pointer;
-        margin-bottom: 8px;
+        margin-bottom: 0;
         font-size: 12px;
         transition: all 0.2s;
     }
@@ -528,6 +703,320 @@
         color: #6b7280;
         margin-top: 3px;
     }
+    
+    .autocomplete-item-out .autocomplete-item-details {
+        color: #b91c1c;
+        font-weight: 500;
+    }
+    .autocomplete-item-out .autocomplete-item-name {
+        color: #6b7280;
+    }
+    /* Mobil va planshet */
+    @media (max-width: 991px) {
+        .pos-container {
+            padding: 12px;
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+        .main-layout {
+            grid-template-columns: 1fr;
+            gap: 12px;
+            max-width: 100%;
+        }
+        .left-panel { max-width: 100%; }
+        .order-column { max-width: 100%; }
+        .pos-header {
+            padding: 12px;
+            max-width: 100%;
+        }
+        .top-products-section .quick-products {
+            flex-direction: row;
+            overflow-x: auto;
+            overflow-y: visible;
+            min-height: 0;
+        }
+        .left-panel .quick-product-btn {
+            min-width: 140px;
+            width: auto;
+        }
+        .search-section { min-width: 0; }
+        .quick-products {
+            max-width: 100%;
+            -webkit-overflow-scrolling: touch;
+        }
+        .quick-product-btn {
+            min-width: 130px;
+            padding: 10px 12px;
+        }
+        .quick-product-name { font-size: 11px; }
+        .quick-product-details { font-size: 9px; }
+        .order-section {
+            padding: 12px;
+            max-width: 100%;
+        }
+        .order-table-wrapper {
+            height: 380px;
+            min-height: 380px;
+            max-height: 380px;
+            overflow-x: auto;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            max-width: 100%;
+            margin-left: -4px;
+            margin-right: -4px;
+        }
+        .order-table {
+            min-width: 400px;
+            font-size: 11px;
+        }
+        .order-table th,
+        .order-table td { padding: 6px 4px; }
+        .order-table th { font-size: 10px; }
+        .qty-btn { width: 28px; height: 28px; min-width: 28px; }
+        .qty-input { width: 34px; }
+        .sidebar {
+            flex-direction: column;
+            max-width: 100%;
+        }
+        .payment-methods,
+        .action-buttons {
+            width: 100%;
+            max-width: 100%;
+        }
+        .payment-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        .summary-row { font-size: 12px; }
+        .summary-row.total { font-size: 14px; }
+        .summary-value { font-size: 16px; }
+    }
+    @media (max-width: 576px) {
+        .main-layout,
+        .left-panel,
+        .order-column,
+        .order-section,
+        .sidebar {
+            min-width: 0;
+        }
+        .pos-container {
+            padding: 6px 8px;
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+        .pos-header {
+            padding: 8px 10px;
+        }
+        .search-input {
+            padding: 10px 12px;
+            font-size: 16px;
+            max-width: 100%;
+        }
+        .top-products-section {
+            margin-top: 6px;
+            padding-top: 6px;
+        }
+        .quick-products {
+            gap: 6px;
+            padding: 2px 0;
+        }
+        .quick-product-btn {
+            min-width: 95px;
+            padding: 8px 10px;
+        }
+        .quick-product-name { font-size: 10px; }
+        .quick-product-details { font-size: 9px; }
+        .order-section {
+            padding: 8px 10px;
+        }
+        .order-summary {
+            padding: 8px 10px;
+        }
+        .summary-row {
+            font-size: 11px;
+            flex-wrap: wrap;
+        }
+        .summary-label { font-size: 11px; }
+        .summary-value { font-size: 14px; }
+        .summary-row.total { font-size: 13px; }
+        .summary-value.total { font-size: 15px; }
+        .report-btn {
+            padding: 10px;
+            font-size: 13px;
+        }
+        .sidebar-kurs-input {
+            padding: 8px 10px;
+            font-size: 16px;
+        }
+        .payment-methods,
+        .action-buttons {
+            padding: 10px;
+        }
+        .payment-methods h3,
+        .action-buttons h3 {
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .payment-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+        .payment-btn {
+            padding: 12px 8px;
+            font-size: 11px;
+        }
+        .payment-btn.credit { grid-column: 1 / -1; }
+        .action-btn {
+            padding: 14px 12px;
+            font-size: 13px;
+        }
+        #variantModal > div,
+        #customerModal > div {
+            max-width: 95vw;
+            width: 90%;
+            margin: 10px;
+        }
+        /* Mobil: jadval yashir, kartalar ko'rsat */
+        .desktop-only { display: none !important; }
+        .mobile-only { display: block !important; }
+        .mobile-cart-actions {
+            margin-bottom: 8px;
+            text-align: right;
+        }
+        .mobile-cart-actions .btn-clear-cart-inline {
+            font-size: 12px;
+            padding: 6px 12px;
+        }
+        .mobile-cart-list {
+            max-height: 220px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .mobile-cart-item {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            width: 100%;
+        }
+        .mobile-cart-item:last-child { margin-bottom: 0; }
+        .mobile-cart-name {
+            font-weight: 600;
+            font-size: 13px;
+            color: #1f2937;
+            margin-bottom: 6px;
+        }
+        .mobile-cart-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .mobile-cart-price {
+            font-size: 12px;
+            color: #16a34a;
+            font-weight: 600;
+        }
+        .mobile-cart-qty {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .mobile-cart-qty .qty-btn {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            font-size: 16px;
+        }
+        .mobile-cart-qty .qty-input {
+            width: 40px;
+            text-align: center;
+            font-size: 14px;
+        }
+        .mobile-cart-remove {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        .mobile-cart-empty {
+            text-align: center;
+            padding: 30px 16px;
+            color: #9ca3af;
+            font-size: 14px;
+        }
+    }
+    @media (min-width: 577px) {
+        .mobile-only { display: none !important; }
+        .desktop-only { display: block !important; }
+    }
+    
+    /* Chiroyli alert modal */
+    #appAlertOverlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.4);
+        z-index: 10050;
+        align-items: center;
+        justify-content: center;
+        animation: appAlertFadeIn 0.2s ease;
+    }
+    #appAlertOverlay.show { display: flex; }
+    @keyframes appAlertFadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .app-alert-box {
+        background: #fff;
+        border-radius: 14px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        max-width: 400px;
+        width: 90%;
+        overflow: hidden;
+        animation: appAlertSlide 0.25s ease;
+    }
+    @keyframes appAlertSlide { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .app-alert-header {
+        padding: 20px 20px 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .app-alert-header.warning { background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); }
+    .app-alert-header.error { background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); }
+    .app-alert-header.success { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); }
+    .app-alert-icon {
+        width: 44px; height: 44px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        flex-shrink: 0;
+    }
+    .app-alert-header.warning .app-alert-icon { background: #f59e0b; color: #fff; }
+    .app-alert-header.error .app-alert-icon { background: #dc2626; color: #fff; }
+    .app-alert-header.success .app-alert-icon { background: #16a34a; color: #fff; }
+    .app-alert-title { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin: 0; }
+    .app-alert-body { padding: 12px 20px 20px; color: #4b5563; font-size: 14px; line-height: 1.5; white-space: pre-line; }
+    .app-alert-footer { padding: 0 20px 20px; }
+    .app-alert-btn {
+        width: 100%;
+        padding: 12px 20px;
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        background: #1f2937;
+        color: #fff;
+        transition: background 0.2s;
+    }
+    .app-alert-btn:hover { background: #374151; }
+    .app-alert-box.warning .app-alert-btn { background: #d97706; }
+    .app-alert-box.warning .app-alert-btn:hover { background: #b45309; }
+    .app-alert-box.error .app-alert-btn { background: #dc2626; }
+    .app-alert-box.error .app-alert-btn:hover { background: #b91c1c; }
+    .app-alert-box.success .app-alert-btn { background: #16a34a; }
+    .app-alert-box.success .app-alert-btn:hover { background: #15803d; }
 </style>
 {% endblock %}
 
@@ -535,50 +1024,41 @@
 <div class="pos-container">
     <!-- Main Layout -->
     <div class="main-layout">
-        <!-- Left Column -->
-        <div class="left-column">
-            <!-- Header -->
+        <!-- Chap: qidiruv + tez-tugmalar -->
+        <div class="left-panel">
             <div class="pos-header">
                 <div class="pos-header-top">
                     <div class="search-section">
                         <div class="autocomplete-container">
                             <input type="text" class="search-input" id="productSearch" 
-                                   placeholder="Mahsulot yoki kategoriya qidirish..." autocomplete="off">
+                                   placeholder="Mahsulot qidirish..." autocomplete="off">
                             <div class="autocomplete-suggestions" id="productSearchSuggestions"></div>
                         </div>
                     </div>
                 </div>
-                <!-- Top Products Section -->
                 <div class="top-products-section" id="topProductsSection">
+                    <div class="top-products-label">Tez tanlov</div>
                     <div class="quick-products" id="topProductsContainer">
                         {% for variant in top_products %}
-                        {% widthratio variant.price 12500 1 as price_usd %}
-                        <div class="quick-product-btn" data-variant-id="{{ variant.id }}" data-variant-name="{{ variant.product.name }}" data-variant-price="{{ variant.price }}" data-variant-stock="{{ variant.stock_quantity }}">
-                            <!-- <div class="quick-product-id">SKU: {{ variant.sku }}</div> -->
+                        <div class="quick-product-btn {% if variant.stock_quantity == 0 %}quick-product-out-of-stock{% endif %}" data-variant-id="{{ variant.id }}" data-variant-name="{{ variant.product.name }}" data-variant-price="{{ variant.price|floatformat:2|comma_to_dot }}" data-variant-stock="{{ variant.stock_quantity }}" data-variant-unit="{{ variant.product.unit }}">
                             <div class="quick-product-name">{{ variant.product.name }}</div>
                             <div class="quick-product-details">
-                                ${{ price_usd|floatformat:2 }} | {{ variant.stock_quantity }} 
+                                {{ variant.price|floatformat:2|comma_to_dot }}$ ({{ variant.price|multiply:current_usd_rate|intdot }} so'm) | {% if variant.stock_quantity == 0 %}<span style="color: #b91c1c; font-weight: 600;">0 {{ variant.product.get_unit_display }}</span>{% else %}{{ variant.stock_quantity }} {{ variant.product.get_unit_display }}{% endif %}
                             </div>
                         </div>
                         {% empty %}
-                        <div style="padding: 10px; color: #6b7280; font-size: 14px;">Top mahsulotlar mavjud emas</div>
+                        <div style="padding: 8px; color: #6b7280; font-size: 12px;">Top mahsulotlar yo'q</div>
                         {% endfor %}
                     </div>
                 </div>
             </div>
+        </div>
 
-        <!-- Order Section -->
-        <!-- Order Table -->
+        <!-- O'rta: faqat korzinka -->
+        <div class="order-column">
         <div class="order-section">
-            <!-- <div class="order-header">
-                <div class="order-header-left">
-                    <h2>Administrator: Kassir joyi</h2>
-                    <p>Buyurtmalar jadvali</p>
-                </div>
-                <button class="clear-btn" onclick="clearCart()">Tozalash</button>
-            </div> -->
-            
-            <div class="order-table-wrapper">
+            <!-- Desktop: jadval -->
+            <div class="order-table-wrapper desktop-only">
                 <table class="order-table">
                     <thead>
                         <tr>
@@ -587,7 +1067,11 @@
                             <th>NARX</th>
                             <th>MIQDOR</th>
                             <th>SUMMA</th>
-                            <th></th>
+                            <th class="th-clear">
+                                <button type="button" class="btn-clear-cart-inline cart-clear-btn desktop-only" id="cartClearBar" style="display: none;" onclick="clearCart()" title="Korzinkani tozalash">
+                                    <i class="bi bi-trash"></i> Tozalash
+                                </button>
+                            </th>
                         </tr>
                     </thead>
                     <tbody id="orderTableBody">
@@ -599,8 +1083,42 @@
                     </tbody>
                 </table>
             </div>
-            
-            <div class="order-summary" id="orderSummary" style="display: none;">
+            <!-- Mobil: korzinka tozalash + kartalar -->
+            <div class="mobile-cart-actions mobile-only" style="display: none;" id="cartClearBarMobile">
+                <button type="button" class="btn-clear-cart-inline cart-clear-btn" onclick="clearCart()"><i class="bi bi-trash"></i> Korzinkani tozalash</button>
+            </div>
+            <div class="mobile-cart-list mobile-only" id="orderTableBodyMobile"></div>
+        </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Dollar kursi — input va Saqlash bir qatorda -->
+            <div class="sidebar-kurs-card">
+                <form action="{% url 'store:exchange_rate' %}?next={% url 'store:create_sale' %}" method="post" class="sidebar-kurs-form">
+                    {% csrf_token %}
+                    <div class="sidebar-kurs-row">
+                        <label for="usdRate" class="sidebar-kurs-label">1 USD =</label>
+                        <input type="number" name="rate" id="usdRate" class="sidebar-kurs-input" value="{{ current_usd_rate|default:12500|floatformat:0|comma_to_dot }}" min="1" step="1" required onchange="updateExchangeRate()" placeholder="so'm">
+                        <button type="submit" class="sidebar-kurs-btn">Saqlash</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Payment Methods -->
+            <div class="payment-methods">
+                <h3>To'lov usullari</h3>
+                <div class="payment-grid">
+                    <button class="payment-btn active" data-method="cash" onclick="selectPaymentMethod('cash')">NAQD</button>
+                    <button class="payment-btn" data-method="card" onclick="selectPaymentMethod('card')">PLASTIK</button>
+                    <button class="payment-btn" data-method="mixed" onclick="selectPaymentMethod('mixed')">ARALASH</button>
+                    <button class="payment-btn" data-method="discount" onclick="applyDiscount()">SKIDKA</button>
+                    <button class="payment-btn credit" data-method="credit" onclick="selectPaymentMethod('credit')">QARZGA</button>
+                </div>
+            </div>
+
+            <!-- Order summary — doim ko'rinadi, summalar korzinka bo'yicha yangilanadi -->
+            <div class="order-summary" id="orderSummary">
                 <div class="summary-row">
                     <span class="summary-label">YAKUNIY TO'LOV (UZS)</span>
                     <span class="summary-value" id="totalPaymentUZS">0 so'm</span>
@@ -618,41 +1136,9 @@
                     <span class="summary-value total" id="totalProducts">0 ta</span>
                 </div>
             </div>
-        </div>
-        </div>
 
-        <!-- Sidebar -->
-        <div class="sidebar">
-            <!-- Operator Info -->
-            <div class="operator-info">
-                <div class="operator-text">Operator: {% if user.is_authenticated %}{{ user.username }}{% else %}Anonim{% endif %}</div>
-                <div class="operator-text">Shift: #{{ request.session.shift_number|default:"1" }}</div>
-                <div class="operator-text" style="margin-top: 10px;">
-                    <label for="usdRate" style="display: block; margin-bottom: 5px; font-size: 12px; color: #6b7280;">Dollar kursi (so'm):</label>
-                    <input type="number" id="usdRate" value="12500" min="1" step="1" 
-                           style="width: 100%; padding: 6px; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 14px;"
-                           onchange="updateExchangeRate()">
-                </div>
-                <button class="report-btn" onclick="window.location.href='{% url 'store:sale_list' %}'" style="margin-top: 10px;">Hisobot</button>
-                <button class="report-btn" onclick="window.location.href='{% url 'store:credit_list' %}'" style="margin-top: 10px; background: #ef4444;">Qarzdorlar</button>
-            </div>
-
-            <!-- Payment Methods -->
-            <div class="payment-methods">
-                <h3>To'lov usullari</h3>
-                <div class="payment-grid">
-                    <button class="payment-btn active" data-method="cash" onclick="selectPaymentMethod('cash')">NAQD</button>
-                    <button class="payment-btn" data-method="card" onclick="selectPaymentMethod('card')">PLASTIK</button>
-                    <button class="payment-btn" data-method="mixed" onclick="selectPaymentMethod('mixed')">ARALASH</button>
-                    <button class="payment-btn" data-method="discount" onclick="applyDiscount()">SKIDKA</button>
-                    <button class="payment-btn credit" data-method="credit" onclick="selectPaymentMethod('credit')">QARZGA</button>
-                </div>
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="action-buttons">
+            <div class="action-buttons" id="actionButtonsContainer">
                 <h3>Amallar</h3>
-                <button class="action-btn cancel" onclick="cancelReceipt()">Chekni bekor qilish</button>
                 <button class="action-btn finalize" onclick="finalizeOrder()">Buyurtmani yakunlash</button>
             </div>
         </div>
@@ -694,6 +1180,20 @@
     </div>
 </div>
 
+<!-- Chiroyli alert modal (qolmagan, savat bo'sh, sotuv natija) -->
+<div id="appAlertOverlay" class="no-print">
+    <div class="app-alert-box" id="appAlertBox">
+        <div class="app-alert-header warning" id="appAlertHeader">
+            <div class="app-alert-icon" id="appAlertIcon"><i class="bi bi-exclamation-triangle-fill"></i></div>
+            <h3 class="app-alert-title" id="appAlertTitle">Ogohlantirish</h3>
+        </div>
+        <div class="app-alert-body" id="appAlertBody">Xabar</div>
+        <div class="app-alert-footer">
+            <button type="button" class="app-alert-btn" id="appAlertBtn">OK</button>
+        </div>
+    </div>
+</div>
+
 <!-- Hidden form for submission -->
 <form id="saleForm" style="display: none;">
     {% csrf_token %}
@@ -711,6 +1211,41 @@
     let searchAutocompleteTimeout;
     let searchSelectedIndex = -1;
     let searchSuggestions = [];
+    
+    // Chiroyli alert (warning / error / success)
+    function showAppAlert(title, message, type, onClose) {
+        type = type || 'warning';
+        var overlay = document.getElementById('appAlertOverlay');
+        var box = document.getElementById('appAlertBox');
+        var header = document.getElementById('appAlertHeader');
+        var icon = document.getElementById('appAlertIcon');
+        var titleEl = document.getElementById('appAlertTitle');
+        var bodyEl = document.getElementById('appAlertBody');
+        var btn = document.getElementById('appAlertBtn');
+        if (!overlay || !box) return;
+        box.classList.remove('warning', 'error', 'success');
+        box.classList.add(type);
+        header.classList.remove('warning', 'error', 'success');
+        header.classList.add(type);
+        titleEl.textContent = title || (type === 'success' ? 'Muvaffaqiyat' : type === 'error' ? 'Xatolik' : 'Ogohlantirish');
+        bodyEl.textContent = message || '';
+        icon.innerHTML = type === 'success' ? '<i class="bi bi-check-circle-fill"></i>' : type === 'error' ? '<i class="bi bi-x-circle-fill"></i>' : '<i class="bi bi-exclamation-triangle-fill"></i>';
+        function close() {
+            overlay.classList.remove('show');
+            if (typeof onClose === 'function') onClose();
+        }
+        btn.onclick = close;
+        overlay.onclick = function(e) { if (e.target === overlay) close(); };
+        overlay.classList.add('show');
+    }
+    
+    // So'm uchun ming ajratuvchi nuqta: 14000 -> "14.000"
+    function formatSoomDot(num) {
+        const n = Math.round(Number(num));
+        const s = String(n < 0 ? -n : n);
+        if (s.length <= 3) return (n < 0 ? '-' : '') + s;
+        return (n < 0 ? '-' : '') + s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
     
     // Autocomplete
     const productSearchInput = document.getElementById('productSearch');
@@ -784,7 +1319,7 @@
     });
     
     function searchProductsAutocomplete(query) {
-        fetch(`{% url 'store:search_products_autocomplete' %}?q=${encodeURIComponent(query)}`)
+        fetch(`{% url 'store:search_products_autocomplete' %}?q=${encodeURIComponent(query)}&include_out_of_stock=1`)
             .then(response => response.json())
             .then(data => {
                 searchSuggestions = data.products;
@@ -794,7 +1329,7 @@
     }
     
     function searchProductsAndShowInQuickSection(query) {
-        fetch(`{% url 'store:search_products_autocomplete' %}?q=${encodeURIComponent(query)}`)
+        fetch(`{% url 'store:search_products_autocomplete' %}?q=${encodeURIComponent(query)}&include_out_of_stock=1`)
             .then(response => response.json())
             .then(data => {
                 if (data.products && data.products.length > 0) {
@@ -820,6 +1355,7 @@
                 variant_name: p.variant_name || p.name,
                 price: parseFloat(p.price),
                 stock: parseInt(p.stock) || 0,
+                unit: p.unit || 'dona',
             });
         });
         return Object.values(byProduct);
@@ -832,25 +1368,44 @@
         if (!modal || !nameEl || !listEl) return;
         nameEl.textContent = productName;
         const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
+        const unitLabel = (u) => (u === 'metr' ? 'Metr' : 'Dona');
+        // Narx har doim USD da ko'rsatiladi: agar qiymat so'm bo'lsa (>100) USD ga o'giramiz (qidiruv so'm qaytaradi)
         listEl.innerHTML = variants.map(v => {
+            const rawStock = Math.max(0, parseInt(v.stock, 10) || 0);
             const inCart = cart.find(item => item.product_id === v.id);
             const qtyInCart = inCart ? inCart.quantity : 0;
-            const remaining = Math.max(0, v.stock - qtyInCart);
-            const priceUSD = (v.price / usdRate).toFixed(2);
+            const remaining = Math.max(0, rawStock - qtyInCart);
+            let priceUsd = parseFloat(v.price) || 0;
+            if (priceUsd > 100) priceUsd = priceUsd / usdRate;
+            const priceUSD = priceUsd.toFixed(2);
+            const soom = priceUsd * usdRate;
+            const u = v.unit || 'dona';
+            const isOut = remaining <= 0;
+            const stockText = isOut ? '<span style="color: #b91c1c; font-weight: 600;">0 ' + unitLabel(u) + ' (qolmagan)</span>' : ('Qolgan: ' + remaining + ' ' + unitLabel(u));
             return `
-                <button type="button" class="quick-product-btn" style="text-align: left; width: 100%;" data-variant-id="${v.id}" data-variant-name="${v.variant_name}" data-variant-price="${v.price}" data-variant-stock="${v.stock}">
+                <button type="button" class="quick-product-btn ${isOut ? 'quick-product-out-of-stock' : ''}" style="text-align: left; width: 100%;" data-variant-id="${v.id}" data-variant-name="${v.variant_name}" data-variant-price="${priceUSD}" data-variant-stock="${rawStock}" data-variant-unit="${u}">
                     <div class="quick-product-name">${v.variant_name}</div>
-                    <div class="quick-product-details">$${priceUSD} | Qolgan: ${remaining} dona</div>
+                    <div class="quick-product-details">${priceUSD}$ (${formatSoomDot(soom)} so'm) | ${stockText}</div>
                 </button>
             `;
         }).join('');
         listEl.querySelectorAll('button').forEach(btn => {
             btn.addEventListener('click', function() {
+                const variantStock = parseInt(this.getAttribute('data-variant-stock')) || 0;
+                if (variantStock <= 0) {
+                    showAppAlert('Mahsulot qolmagan', 'Bu mahsulot qolmagan. Korzinkaga qo\'shib bo\'lmaydi.', 'warning');
+                    return;
+                }
                 const variantId = parseInt(this.getAttribute('data-variant-id'));
                 const variantName = this.getAttribute('data-variant-name');
-                const variantPrice = parseFloat(this.getAttribute('data-variant-price'));
-                const variantStock = parseInt(this.getAttribute('data-variant-stock'));
-                addProductToCart(variantId, variantName, variantPrice, variantStock);
+                const variantUnit = this.getAttribute('data-variant-unit') || 'dona';
+                const inCart = cart.find(item => item.product_id === variantId);
+                const availableStock = variantStock - (inCart ? inCart.quantity : 0);
+                if (availableStock <= 0) {
+                    showAppAlert('Mahsulot qolmagan', 'Bu mahsulot qolmagan. Korzinkaga qo\'shib bo\'lmaydi.', 'warning');
+                    return;
+                }
+                addProductToCartWithCurrentPrice(variantId, variantName, variantStock, variantUnit);
                 closeVariantModal();
             });
         });
@@ -872,22 +1427,32 @@
         }
         
         const USD_RATE = parseFloat(document.getElementById('usdRate')?.value) || 12500;
-        const groups = groupVariantsByProduct(products).slice(0, 5);
+        const groups = groupVariantsByProduct(products).slice(0, 8);
+        const toUsd = (p) => { const x = parseFloat(p) || 0; return x > 100 ? x / USD_RATE : x; };
         
         const htmlParts = [];
         groups.forEach(group => {
             const productName = group.product_name || (group.variants[0] && group.variants[0].variant_name) || '';
+            const unitLabel = (u) => (u === 'metr' ? 'Metr' : 'Dona');
             if (group.variants.length === 1) {
                 const v = group.variants[0];
-                const priceUSD = (v.price / USD_RATE).toFixed(2);
+                const priceUsd = toUsd(v.price);
+                const priceUSD = priceUsd.toFixed(2);
+                const soom = priceUsd * USD_RATE;
+                const u = v.unit || 'dona';
+                const rawStock = parseInt(v.stock, 10) || 0;
+                const effectiveStock = Math.max(0, rawStock);
+                const isOut = effectiveStock <= 0;
+                const stockText = isOut ? '<span style="color: #b91c1c; font-weight: 600;">0 ' + unitLabel(u) + ' (qolmagan)</span>' : (effectiveStock + ' ' + unitLabel(u));
                 htmlParts.push(`
-                    <div class="quick-product-btn" data-variant-id="${v.id}" data-variant-name="${v.variant_name}" data-variant-price="${v.price}" data-variant-stock="${v.stock}" data-original-stock="${v.stock}">
+                    <div class="quick-product-btn ${isOut ? 'quick-product-out-of-stock' : ''}" data-variant-id="${v.id}" data-variant-name="${v.variant_name}" data-variant-price="${priceUSD}" data-variant-stock="${effectiveStock}" data-original-stock="${rawStock}" data-variant-unit="${u}">
                         <div class="quick-product-name">${v.variant_name}</div>
-                        <div class="quick-product-details">$${priceUSD} | ${v.stock} dona</div>
+                        <div class="quick-product-details">${priceUSD}$ (${formatSoomDot(soom)} so'm) | ${stockText}</div>
                     </div>
                 `);
             } else {
-                const variantsJson = JSON.stringify(group.variants).replace(/"/g, '&quot;');
+                const variantsUsd = group.variants.map(v => ({ ...v, price: toUsd(v.price) }));
+                const variantsJson = JSON.stringify(variantsUsd).replace(/"/g, '&quot;');
                 htmlParts.push(`
                     <div class="quick-product-btn quick-product-btn-multi" data-product-id="${group.product_id}" data-product-name="${productName}" data-variants="${variantsJson}">
                         <div class="quick-product-name">${productName}</div>
@@ -897,25 +1462,15 @@
             }
         });
         topProductsContainer.innerHTML = htmlParts.join('');
-        
-        topProductsContainer.querySelectorAll('.quick-product-btn').forEach(btn => {
-            if (btn.hasAttribute('data-variant-id')) {
-                btn.addEventListener('click', function() {
-                    const variantId = parseInt(this.getAttribute('data-variant-id'));
-                    const variantName = this.getAttribute('data-variant-name');
-                    const variantPrice = parseFloat(this.getAttribute('data-variant-price'));
-                    const originalStock = parseInt(this.getAttribute('data-original-stock')) || parseInt(this.getAttribute('data-variant-stock'));
-                    addProductToCart(variantId, variantName, variantPrice, originalStock);
-                });
-            } else if (btn.hasAttribute('data-product-id')) {
-                btn.addEventListener('click', function() {
-                    const productName = this.getAttribute('data-product-name');
-                    const variantsStr = this.getAttribute('data-variants');
-                    if (!variantsStr) return;
-                    const variants = JSON.parse(variantsStr.replace(/&quot;/g, '"'));
-                    openVariantModal(productName, variants);
-                });
-            }
+        // Bitta variantli tugmalar: faqat delegatlangan handler ishlatiladi (topProductsContainer click) — ikkilanish bo'lmasin
+        topProductsContainer.querySelectorAll('.quick-product-btn[data-product-id]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const productName = this.getAttribute('data-product-name');
+                const variantsStr = this.getAttribute('data-variants');
+                if (!variantsStr) return;
+                const variants = JSON.parse(variantsStr.replace(/&quot;/g, '"'));
+                openVariantModal(productName, variants);
+            });
         });
     }
     
@@ -933,11 +1488,23 @@
         }
         const groups = groupVariantsByProduct(products);
         searchSuggestions = groups;
+        const unitLabel = (u) => (u === 'metr' ? 'Metr' : 'Dona');
+        const usdRateSearch = parseFloat(document.getElementById('usdRate')?.value) || 12500;
         searchSuggestionsContainer.innerHTML = groups.map((group, index) => {
             const productName = group.product_name || (group.variants[0] && group.variants[0].variant_name) || '';
-            const label = group.variants.length === 1 ? `${group.variants[0].variant_name} | ${parseFloat(group.variants[0].price).toLocaleString()} so'm` : `${productName} — ${group.variants.length} rang`;
+            const u = (group.variants[0] && (group.variants[0].unit || 'dona')) || 'dona';
+            const v0 = group.variants[0];
+            const stock0 = v0.stock || 0;
+            const stockSuffix = stock0 === 0 ? ' | 0 ' + unitLabel(u) + ' (qolmagan)' : ' | ' + unitLabel(u);
+            const priceSoom = parseFloat(v0.price);
+            const priceUSD = (priceSoom / usdRateSearch).toFixed(2);
+            const label = group.variants.length === 1
+                ? `${v0.variant_name} | ${priceUSD}$ (${formatSoomDot(priceSoom)} so'm)${stockSuffix}`
+                : `${productName} — ${group.variants.length} rang | ${unitLabel(u)}`;
+            const allOut = group.variants.every(v => (v.stock || 0) <= 0);
+            const outClass = (group.variants.length === 1 && stock0 === 0) || allOut ? ' autocomplete-item-out' : '';
             return `
-            <div class="autocomplete-item" data-index="${index}">
+            <div class="autocomplete-item${outClass}" data-index="${index}">
                 <div class="autocomplete-item-name">${productName}</div>
                 <div class="autocomplete-item-details">${label}</div>
             </div>
@@ -963,23 +1530,24 @@
         if (index < 0 || !searchSuggestions || !searchSuggestions[index]) return;
         const group = searchSuggestions[index];
         const productName = group.product_name || (group.variants[0] && group.variants[0].variant_name) || '';
+        const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
         if (group.variants.length === 1) {
             const v = group.variants[0];
-            addProductToCart(v.id, v.variant_name, v.price, v.stock);
+            addProductToCartWithCurrentPrice(v.id, v.variant_name, v.stock, v.unit || 'dona');
         } else {
-            openVariantModal(productName, group.variants);
+            const variantsUsd = group.variants.map(v => ({ ...v, price: parseFloat(v.price) / usdRate }));
+            openVariantModal(productName, variantsUsd);
         }
     }
 
     function selectSearchSuggestion(product) {
-        // Eski API: bitta variant ob'ekt — to'g'ridan-to'g'ri qo'shamiz
         productSearchInput.value = '';
         searchSuggestionsContainer.classList.remove('show');
         const variantId = typeof product.id === 'string' ? parseInt(product.id) : product.id;
         const displayName = product.variant_name || product.name;
-        const price = parseFloat(product.price);
         const stock = parseInt(product.stock);
-        addProductToCart(variantId, displayName, price, stock);
+        const unit = product.unit || 'dona';
+        addProductToCartWithCurrentPrice(variantId, displayName, stock, unit);
     }
     
     document.addEventListener('click', function(e) {
@@ -990,21 +1558,62 @@
     
     // Initialize top products on page load
     document.addEventListener('DOMContentLoaded', function() {
-        // Display top products initially
         if (topProducts.length > 0) {
             displayTopProductsInQuickSection(topProducts);
         }
+        updateOrderTable();
+        // Delegation: server-rendered va JS-built tugmalar uchun
+        const topProductsContainer = document.getElementById('topProductsContainer');
+        if (topProductsContainer) {
+            topProductsContainer.addEventListener('click', function(e) {
+                const btn = e.target.closest('.quick-product-btn[data-variant-id]');
+                if (!btn) return;
+                e.preventDefault();
+                const variantId = parseInt(btn.getAttribute('data-variant-id'));
+                const variantName = btn.getAttribute('data-variant-name') || '';
+                const variantStock = parseInt(btn.getAttribute('data-original-stock') || btn.getAttribute('data-variant-stock')) || 0;
+                const variantUnit = btn.getAttribute('data-variant-unit') || 'dona';
+                if (variantStock <= 0) {
+                    showAppAlert('Mahsulot qolmagan', 'Bu mahsulot qolmagan. Korzinkaga qo\'shib bo\'lmaydi.', 'warning');
+                    return;
+                }
+                addProductToCartWithCurrentPrice(variantId, variantName, variantStock, variantUnit);
+            });
+        }
     });
     
+    // Bazadan variantning joriy narxini olish (hamma joyda bir xil narx)
+    async function getVariantPriceUsd(variantId) {
+        try {
+            const url = `{% url 'store:get_variant_price' variant_id=0 %}`.replace('/0/', '/' + variantId + '/');
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.price_usd != null) return parseFloat(data.price_usd);
+        } catch (e) { console.error('getVariantPriceUsd', e); }
+        return null;
+    }
+    
+    // Korzinkaga qo'shish — har doim bazadan joriy narxni olib qo'shadi (mahsulot detail/korzinka edit dan keyin ham to'g'ri)
+    async function addProductToCartWithCurrentPrice(variantId, productName, productStock, productUnit) {
+        const priceUsd = await getVariantPriceUsd(variantId);
+        if (priceUsd == null || priceUsd < 0) {
+            showAppAlert('Xatolik', 'Narxni olishda xatolik. Qayta urinib ko\'ring.', 'error');
+            return;
+        }
+        addProductToCart(variantId, productName, priceUsd, productStock, productUnit);
+        document.querySelectorAll(`[data-variant-id="${variantId}"]`).forEach(btn => btn.setAttribute('data-variant-price', String(Number(priceUsd).toFixed(2))));
+        updateQuickProducts();
+    }
+    
     // Add product to cart with default quantity 1
-    // productPrice = narx bazadan (so'm). Korzinkada USD da saqlaymiz — kurs o'zgarganda $ o'zgarmasligi uchun.
-    function addProductToCart(productId, productName, productPriceSoom, productStock) {
+    // priceUsd = narx USD da. Korzinkada faqat USD saqlanadi, so'm = USD * kurs.
+    function addProductToCart(productId, productName, priceUsd, productStock, productUnit) {
+        if (typeof productUnit === 'undefined') productUnit = 'dona';
         const quantity = 1;
-        const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
-        const priceUsd = productPriceSoom / usdRate;
+        const unitLabel = productUnit === 'metr' ? 'Metr' : 'Dona';
         
         if (productStock <= 0) {
-            alert(`Yetarli mahsulot yo'q! Mavjud: ${productStock} dona`);
+            showAppAlert('Yetarli mahsulot yo\'q', 'Mavjud: ' + productStock + ' ' + unitLabel, 'warning');
             return;
         }
         
@@ -1013,7 +1622,7 @@
         if (existingItem) {
             const newQuantity = existingItem.quantity + quantity;
             if (newQuantity > productStock) {
-                alert(`Yetarli mahsulot yo'q! Mavjud: ${productStock} dona, Savatda: ${existingItem.quantity} dona`);
+                showAppAlert('Yetarli mahsulot yo\'q', 'Mavjud: ' + productStock + ' ' + unitLabel + ', Savatda: ' + existingItem.quantity, 'warning');
                 return;
             }
             existingItem.quantity = newQuantity;
@@ -1023,7 +1632,8 @@
                 name: productName,
                 price: priceUsd,
                 quantity: quantity,
-                stock: productStock
+                stock: productStock,
+                unit: productUnit
             });
         }
         
@@ -1037,15 +1647,15 @@
             const data = await response.json();
             const product = data.products.find(p => p.id == productId);
             if (product) {
-                const priceSoom = parseFloat(product.price);
-                addProductToCart(parseInt(product.id), product.name, priceSoom, parseInt(product.stock));
+                const unit = product.unit || 'dona';
+                addProductToCartWithCurrentPrice(parseInt(product.id), product.name, parseInt(product.stock), unit);
             } else {
                 console.error('Product not found:', productId);
-                alert('Mahsulot topilmadi!');
+                showAppAlert('Xatolik', 'Mahsulot topilmadi!', 'error');
             }
         } catch (error) {
             console.error('Error fetching product:', error);
-            alert('Xatolik yuz berdi!');
+            showAppAlert('Xatolik', 'Xatolik yuz berdi!', 'error');
         }
     }
     
@@ -1053,25 +1663,34 @@
     function updateOrderTable() {
         const tbody = document.getElementById('orderTableBody');
         const orderSummary = document.getElementById('orderSummary');
+        const cartClearBar = document.getElementById('cartClearBar');
+        const cartClearBarMobile = document.getElementById('cartClearBarMobile');
         
         if (cart.length === 0) {
+            if (cartClearBar) cartClearBar.style.display = 'none';
+            if (cartClearBarMobile) cartClearBarMobile.style.display = 'none';
             tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #9ca3af;">Savat bo\'sh</td></tr>';
-            // Hide order summary when cart is empty
-            if (orderSummary) {
-                orderSummary.style.display = 'none';
+            var mobileEl = document.getElementById('orderTableBodyMobile');
+            if (mobileEl) {
+                mobileEl.innerHTML = '<div class="mobile-cart-empty">Savat bo\'sh</div>';
             }
             updateQuickProducts();
+            document.getElementById('totalPaymentUSD').textContent = '0.00 $';
+            document.getElementById('totalPaymentUZS').textContent = '0 so\'m';
+            document.getElementById('discount').textContent = '0 so\'m';
+            document.getElementById('totalProducts').textContent = '0 ta';
             return;
         }
         
-        // Show order summary when cart has items
-        if (orderSummary) {
-            orderSummary.style.display = 'block';
-        }
+        if (cartClearBar) cartClearBar.style.display = 'inline-flex';
+        if (cartClearBarMobile) cartClearBarMobile.style.display = 'block';
         
         let html = '';
         const usdRate = parseFloat(document.getElementById('usdRate').value) || 12500;
         cart.forEach((item, index) => {
+            const unit = item.unit || 'dona';
+            const unitLabel = unit === 'metr' ? 'Metr' : 'Dona';
+            const qtySuffix = unit === 'metr' ? ' M' : '';
             // item.price = USD (o'zgarmaydi). So'm = USD * kurs (kurs o'zgarganda shu qator yangilanadi)
             const priceUSD = item.price;
             const subtotalUSD = item.price * item.quantity;
@@ -1089,13 +1708,13 @@
                              style="cursor: pointer; position: relative;">
                             ${item.name}
                             <span class="stock-tooltip" id="tooltip-${index}" style="display: none; position: absolute; background: #1f2937; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 1000; top: 100%; left: 0; margin-top: 5px; white-space: nowrap;">
-                                Qolgan: ${remainingStock} dona (Bazada: ${item.stock} dona)
+                                Qolgan: ${remainingStock} ${unitLabel} (Bazada: ${item.stock} ${unitLabel})
                             </span>
                         </div>
                     </td>
-                    <td class="price-cell">
+                    <td class="price-cell price-edit-cell" data-cart-index="${index}" onclick="startEditPrice(${index})" title="Narxni o'zgartirish uchun bosing">
                         <div class="price-usd-fixed">$${priceUSD.toFixed(2)}</div>
-                        <div class="price-soom-from-rate">${Math.round(priceSoom).toLocaleString()} so'm</div>
+                        <div class="price-soom-from-rate">${formatSoomDot(priceSoom)} so'm</div>
                     </td>
                     <td>
                         <div class="quantity-controls">
@@ -1103,11 +1722,12 @@
                             <input type="number" class="qty-input" value="${item.quantity}" min="1" max="${item.stock}" 
                                    onchange="updateQuantity(${index}, this.value)">
                             <button class="qty-btn" onclick="increaseQuantity(${index})">+</button>
+                            <span class="qty-unit-suffix">${qtySuffix}</span>
                         </div>
                     </td>
                     <td class="price-cell">
                         <div class="price-usd-fixed">$${subtotalUSD.toFixed(2)}</div>
-                        <div class="price-soom-from-rate">${Math.round(subtotalSoom).toLocaleString()} so'm</div>
+                        <div class="price-soom-from-rate">${formatSoomDot(subtotalSoom)} so'm</div>
                     </td>
                     <td>
                         <button class="remove-btn" onclick="removeItem(${index})">X</button>
@@ -1117,6 +1737,31 @@
         });
         
         tbody.innerHTML = html;
+        var mobileEl = document.getElementById('orderTableBodyMobile');
+        if (mobileEl) {
+            if (cart.length === 0) {
+                mobileEl.innerHTML = '<div class="mobile-cart-empty">Savat bo\'sh</div>';
+            } else {
+                var mHtml = '';
+                cart.forEach(function(item, index) {
+                    var priceUSD = item.price;
+                    var subtotalUSD = item.price * item.quantity;
+                    var usdRate = parseFloat(document.getElementById('usdRate').value) || 12500;
+                    var subtotalSoom = item.price * item.quantity * usdRate;
+                    mHtml += '<div class="mobile-cart-item">' +
+                        '<div class="mobile-cart-name">' + (index + 1) + '. ' + item.name + '</div>' +
+                        '<div class="mobile-cart-row">' +
+                        '<span class="mobile-cart-price">$' + subtotalUSD.toFixed(2) + ' (' + formatSoomDot(subtotalSoom) + ')</span>' +
+                        '<div class="mobile-cart-qty">' +
+                        '<button type="button" class="qty-btn" onclick="decreaseQuantity(' + index + ')">-</button>' +
+                        '<input type="number" class="qty-input" value="' + item.quantity + '" min="1" max="' + item.stock + '" onchange="updateQuantity(' + index + ', this.value)">' +
+                        '<button type="button" class="qty-btn" onclick="increaseQuantity(' + index + ')">+</button>' +
+                        '<button type="button" class="remove-btn mobile-cart-remove" onclick="removeItem(' + index + ')">X</button>' +
+                        '</div></div></div>';
+                });
+                mobileEl.innerHTML = mHtml;
+            }
+        }
         updateSummary();
         updateQuickProducts();
     }
@@ -1135,8 +1780,8 @@
         const totalSoom = totalUSD * usdRate - discount;
         
         document.getElementById('totalPaymentUSD').textContent = '$' + totalUSD.toFixed(2);
-        document.getElementById('totalPaymentUZS').textContent = Math.round(totalSoom).toLocaleString() + ' so\'m';
-        document.getElementById('discount').textContent = discount.toLocaleString() + ' so\'m';
+        document.getElementById('totalPaymentUZS').textContent = formatSoomDot(totalSoom) + ' so\'m';
+        document.getElementById('discount').textContent = formatSoomDot(discount) + ' so\'m';
         document.getElementById('totalProducts').textContent = totalItems + ' ta';
     }
     
@@ -1164,24 +1809,102 @@
         }
     }
     
+    // Korzinkada narxni o'zgartirish — birlik narxiga bosganda input ochiladi, Saqlashda bazada ham yangilanadi
+    function startEditPrice(cartIndex) {
+        const cell = document.querySelector(`.price-edit-cell[data-cart-index="${cartIndex}"]`);
+        if (!cell || !cart[cartIndex]) return;
+        if (cell.querySelector('.price-edit-inline')) return; // allaqachon edit rejimida
+        const priceUsd = cart[cartIndex].price;
+        const valueStr = priceUsd % 1 === 0 ? priceUsd : priceUsd.toFixed(2);
+        cell.innerHTML = `
+            <div class="price-edit-inline" onclick="event.stopPropagation()">
+                <span style="font-weight:600;color:#16a34a">$</span>
+                <input type="number" id="price-edit-input-${cartIndex}" value="${valueStr}" min="0" step="0.01">
+                <button type="button" class="price-edit-save-btn" onclick="savePriceEdit(${cartIndex})">Saqlash</button>
+                <button type="button" class="price-edit-cancel-btn" onclick="cancelPriceEdit(${cartIndex})">Bekor</button>
+            </div>
+        `;
+        const input = document.getElementById(`price-edit-input-${cartIndex}`);
+        if (input) { input.focus(); input.select(); }
+    }
+    
+    function cancelPriceEdit(cartIndex) {
+        updateOrderTable();
+    }
+    
+    async function savePriceEdit(cartIndex) {
+        const input = document.getElementById(`price-edit-input-${cartIndex}`);
+        if (!input || !cart[cartIndex]) return;
+        const newPriceUsd = parseFloat(input.value);
+        if (isNaN(newPriceUsd) || newPriceUsd < 0) {
+            showAppAlert('Xatolik', 'Noto\'g\'ri narx', 'error');
+            return;
+        }
+        const variantId = cart[cartIndex].product_id;
+        const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
+        try {
+            const res = await fetch(`{% url 'store:update_variant_price' variant_id=0 %}`.replace('/0/', '/' + variantId + '/'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                body: JSON.stringify({ price_usd: newPriceUsd })
+            });
+            const data = await res.json();
+            if (data.success) {
+                cart[cartIndex].price = newPriceUsd;
+                document.querySelectorAll(`[data-variant-id="${variantId}"]`).forEach(btn => btn.setAttribute('data-variant-price', String(newPriceUsd)));
+                updateOrderTable();
+                updateQuickProducts();
+            } else {
+                showAppAlert('Xatolik', data.error || 'Narxni saqlashda xatolik', 'error');
+            }
+        } catch (e) {
+            console.error(e);
+            showAppAlert('Xatolik', 'Narxni saqlashda xatolik', 'error');
+        }
+    }
+    
+    function getCsrfToken() {
+        const name = 'csrftoken';
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const c = cookies[i].trim();
+            if (c.indexOf(name + '=') === 0) return c.substring(name.length + 1);
+        }
+        return '';
+    }
+    
     // Update quick products stock display based on cart (faqat bitta variantli tugmalar)
     function updateQuickProducts() {
         const quickProductButtons = document.querySelectorAll('.quick-product-btn[data-variant-id]');
         const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
         quickProductButtons.forEach(btn => {
             const variantId = parseInt(btn.getAttribute('data-variant-id'));
-            const originalStock = parseInt(btn.getAttribute('data-original-stock')) || parseInt(btn.getAttribute('data-variant-stock')) || 0;
+            const originalStock = parseInt(btn.getAttribute('data-original-stock'), 10) || parseInt(btn.getAttribute('data-variant-stock'), 10) || 0;
+            const effectiveOriginal = Math.max(0, originalStock);
             const cartItem = cart.find(item => item.product_id === variantId);
             const quantityInCart = cartItem ? cartItem.quantity : 0;
-            const remainingStock = Math.max(0, originalStock - quantityInCart);
+            const remainingStock = Math.max(0, effectiveOriginal - quantityInCart);
             const detailsEl = btn.querySelector('.quick-product-details');
-            if (detailsEl) {
-                const price = parseFloat(btn.getAttribute('data-variant-price')) || 0;
-                const priceUSD = (price / usdRate).toFixed(2);
-                detailsEl.textContent = `$${priceUSD} | ${remainingStock} dona`;
-                if (remainingStock <= 0) detailsEl.style.color = '#ef4444';
-                else if (remainingStock <= 5) detailsEl.style.color = '#f59e0b';
-                else detailsEl.style.color = '';
+            const unit = btn.getAttribute('data-variant-unit') || 'dona';
+            const unitLabel = unit === 'metr' ? 'Metr' : 'Dona';
+            if (remainingStock <= 0) {
+                btn.classList.add('quick-product-out-of-stock');
+                if (detailsEl) {
+                    const priceUsd = parseFloat(btn.getAttribute('data-variant-price')) || 0;
+                    const priceUSD = priceUsd.toFixed(2);
+                    const soom = priceUsd * usdRate;
+                    detailsEl.innerHTML = priceUSD + '$ (' + formatSoomDot(soom) + " so'm) | <span style=\"color: #b91c1c; font-weight: 600;\">0 " + unitLabel + ' (qolmagan)</span>';
+                }
+            } else {
+                btn.classList.remove('quick-product-out-of-stock');
+                if (detailsEl) {
+                    const priceUsd = parseFloat(btn.getAttribute('data-variant-price')) || 0;
+                    const priceUSD = priceUsd.toFixed(2);
+                    const soom = priceUsd * usdRate;
+                    detailsEl.textContent = `${priceUSD}$ (${formatSoomDot(soom)} so'm) | ${remainingStock} ${unitLabel}`;
+                    detailsEl.style.color = '';
+                    if (remainingStock <= 5) detailsEl.style.color = '#f59e0b';
+                }
             }
         });
     }
@@ -1251,10 +1974,12 @@
         }
     }
     
-    // Actions
+    // Actions — bitta tasdiq, savat to‘g‘ridan tozalanadi (clearCart ikki marta confirm qilmasin)
     function cancelReceipt() {
         if (confirm('Chekni bekor qilishni tasdiqlaysizmi?')) {
-            clearCart();
+            cart = [];
+            discount = 0;
+            updateOrderTable();
         }
     }
     
@@ -1358,20 +2083,20 @@
         const customerPhone = phoneEl ? phoneEl.value.trim() : '';
         
         if (!customerName) {
-            alert('Mijoz nomini kiriting!');
+            showAppAlert('Mijoz nomi shart', 'Mijoz nomini kiriting!', 'warning');
             return;
         }
         
         closeCustomerModal();
         proceedWithOrder(customerName, customerPhone).catch(function(err) {
             console.error('Sotuv yuborishda xatolik:', err);
-            alert('Xatolik: ' + (err && err.message ? err.message : String(err)));
+            showAppAlert('Xatolik', err && err.message ? err.message : String(err), 'error');
         });
     }
     
     async function finalizeOrder() {
         if (cart.length === 0) {
-            alert('Savat bo\'sh!');
+            showAppAlert('Savat bo\'sh', 'Savat bo\'sh! Avval mahsulot qo\'shing.', 'warning');
             return;
         }
         
@@ -1425,21 +2150,21 @@
             const result = await response.json();
             
             if (result.success) {
-                // Clear cart before redirecting
                 cart = [];
                 discount = 0;
                 updateOrderTable();
-                
-                // Show success message
-                alert('Sotuv muvaffaqiyatli yaratildi!');
-                
-                // Redirect to receipt
-                window.location.href = `/sales/${result.sale_id}/receipt/`;
+                showAppAlert('Muvaffaqiyat', 'Sotuv muvaffaqiyatli yaratildi!', 'success', function() {
+                    window.location.href = '/sales/' + result.sale_id + '/receipt/';
+                });
             } else {
-                alert('Xatolik: ' + result.error);
+                var msg = result.error || 'Noma\'lum xatolik';
+                if (response.status === 400 && msg.indexOf('yetarli mahsulot') !== -1) {
+                    msg += ' (Boshqa qurilmada sotilgan bo\'lishi mumkin. Sahifani yangilab qayta urinib ko\'ring.)';
+                }
+                showAppAlert('Xatolik', msg, 'error');
             }
         } catch (error) {
-            alert('Xatolik yuz berdi: ' + error);
+            showAppAlert('Xatolik', 'Xatolik yuz berdi: ' + error, 'error');
         }
     }
     

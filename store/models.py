@@ -1,12 +1,61 @@
 from django.db import models
 from django.core.validators import MinValueValidator
+from django.conf import settings
 from decimal import Decimal
 import logging
+import re
 
 logger = logging.getLogger('store')
 
 
+class Market(models.Model):
+    """Do'kon / magazin — har bir market o'z mahsulotlari va sotuvlari bilan"""
+    name = models.CharField(max_length=200, verbose_name="Market nomi")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Market"
+        verbose_name_plural = "Marketlar"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class ExchangeRate(models.Model):
+    """Kunlik dollar kursi (1 USD = rate so'm) — mahsulot narxlari va sotuvda ishlatiladi"""
+    market = models.ForeignKey(Market, on_delete=models.CASCADE, null=True, blank=True, related_name='exchange_rates', verbose_name="Market")
+    rate = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0.01)], verbose_name="1 USD (so'm)")
+    date = models.DateField(verbose_name="Sana")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Valyuta kursi"
+        verbose_name_plural = "Valyuta kurslari"
+        ordering = ['-date']
+        constraints = [
+            models.UniqueConstraint(fields=['market', 'date'], name='unique_market_date_rate'),
+        ]
+
+    def __str__(self):
+        return f"1 USD = {self.rate} so'm ({self.date})"
+
+
+class UserProfile(models.Model):
+    """Foydalanuvchi biriktirilgan market (admin bo'sh qoldirsa, keyin biriktiradi)"""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile', verbose_name="Foydalanuvchi")
+    market = models.ForeignKey(Market, on_delete=models.SET_NULL, null=True, blank=True, related_name='users', verbose_name="Market")
+
+    class Meta:
+        verbose_name = "Foydalanuvchi profili"
+        verbose_name_plural = "Foydalanuvchi profillari"
+
+    def __str__(self):
+        return f"{self.user.username} — {self.market.name if self.market else 'market tanlanmagan'}"
+
+
 class Category(models.Model):
+    market = models.ForeignKey(Market, on_delete=models.CASCADE, null=True, blank=True, related_name='categories', verbose_name="Market")
     name = models.CharField(max_length=100, verbose_name="Kategoriya nomi")
     description = models.TextField(blank=True, verbose_name="Tavsif")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -22,9 +71,14 @@ class Category(models.Model):
 
 
 class Product(models.Model):
+    UNIT_CHOICES = [
+        ('dona', 'Dona'),
+        ('metr', 'Metr'),
+    ]
     """Asosiy mahsulot - variantlar uchun asos"""
     name = models.CharField(max_length=200, verbose_name="Mahsulot nomi")
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='products', verbose_name="Kategoriya")
+    unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default='dona', verbose_name="O'lchov birligi")
     description = models.TextField(blank=True, verbose_name="Tavsif")
     image = models.ImageField(upload_to='products/', blank=True, null=True, verbose_name="Asosiy rasm")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -96,8 +150,8 @@ class ProductVariant(models.Model):
     """Mahsulot variantlari - Product + AttributeValue kombinatsiyasi"""
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants', verbose_name="Mahsulot")
     attribute_values = models.ManyToManyField(AttributeValue, related_name='variants', verbose_name="Atribut qiymatlari")
-    sku = models.CharField(max_length=100, unique=True, verbose_name="SKU")
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))], verbose_name="Kirib kelish narxi", default=0)
+    sku = models.CharField(max_length=100, unique=True, blank=True, null=True, verbose_name="SKU")
+    cost_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0'))], verbose_name="Kirib kelish narxi", default=Decimal('0.00'))
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))], verbose_name="Sotish narxi")
     stock_quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)], verbose_name="Ombordagi miqdor")
     image = models.ImageField(upload_to='products/variants/', blank=True, null=True, verbose_name="Variant rasm")
@@ -111,7 +165,7 @@ class ProductVariant(models.Model):
         ordering = ['product', '-created_at']
 
     def __str__(self):
-        variant_name = ", ".join([f"{av.attribute.name}: {av.value}" for av in self.attribute_values.all()])
+        variant_name = ", ".join([av.value for av in self.attribute_values.all()])
         if variant_name:
             return f"{self.product.name} ({variant_name})"
         return f"{self.product.name}"
@@ -123,56 +177,39 @@ class ProductVariant(models.Model):
             return ", ".join(variant_parts)
         return "Asosiy variant"
 
-    def save(self, *args, **kwargs):
-        # Check if this is an update (pk exists) to avoid recursion
-        is_update = self.pk is not None
-        
-        # Auto-generate SKU if not provided
-        if not self.sku:
-            category_prefix = self.product.category.name[:3].upper() if self.product and self.product.category else "PRD"
-            
-            # Get attribute values - only if pk exists (after first save)
-            variant_suffix = ""
-            if is_update:
+    @classmethod
+    def generate_sku_for_product(cls, product_name):
+        """Kod: nomining boshidagi 3 ta harf + ketma-ket raqam (raz-001, led-002), unikal."""
+        if not product_name or not str(product_name).strip():
+            prefix = 'prd'
+        else:
+            letters = ''.join(c for c in str(product_name) if c.isalpha())[:3].lower()
+            prefix = (letters + 'xxx')[:3] if letters else 'prd'
+        existing = cls.objects.values_list('sku', flat=True)
+        max_num = 0
+        for sku in existing:
+            if sku and re.match(r'^[a-z]{3}-\d{3}$', sku):
                 try:
-                    # Use refresh_from_db to avoid recursion
-                    self.refresh_from_db(fields=['id'])
-                    attr_values = list(self.attribute_values.all()[:3])
-                    if attr_values:
-                        variant_suffix = "-" + "-".join([av.value[:2].upper() for av in attr_values])
-                except:
-                    pass  # If attribute_values not accessible yet, skip
-            
-            if self.id:
-                next_num = self.id
-            else:
-                next_num = ProductVariant.objects.count() + 1
-            
-            self.sku = f"{category_prefix}-{next_num:04d}{variant_suffix}"
-        
-        # Save first to get ID
+                    num = int(sku.split('-')[1])
+                    max_num = max(max_num, num)
+                except (ValueError, IndexError):
+                    pass
+        next_num = max_num + 1
+        return f"{prefix}-{next_num:03d}"
+
+    def save(self, *args, **kwargs):
+        # Ombordagi miqdor hech qachon manfiy bo'lmasin
+        if self.stock_quantity is not None and self.stock_quantity < 0:
+            self.stock_quantity = 0
+        # Kod bo'sh bo'lsa: nom boshidagi 3 harf + ketma-ket raqam (raz-001, led-002)
+        if not self.sku and self.product_id:
+            self.sku = self.generate_sku_for_product(self.product.name)
         super().save(*args, **kwargs)
-        
-        # Update SKU with attribute values after save if needed (only if not already updated)
-        if is_update and self.sku and not any(char.islower() for char in self.sku.split('-')[-1] if self.sku.count('-') > 1):
-            # Check if SKU needs update with attribute values
-            try:
-                attr_values = list(self.attribute_values.all()[:3])
-                if attr_values:
-                    category_prefix = self.product.category.name[:3].upper() if self.product and self.product.category else "PRD"
-                    variant_suffix = "-" + "-".join([av.value[:2].upper() for av in attr_values])
-                    new_sku = f"{category_prefix}-{self.id:04d}{variant_suffix}"
-                    if new_sku != self.sku:
-                        # Update only SKU field using update() to avoid recursion
-                        ProductVariant.objects.filter(pk=self.pk).update(sku=new_sku)
-                        self.sku = new_sku  # Update instance attribute
-            except Exception as e:
-                logger.error(f"Error updating SKU with attribute values: {str(e)}")
-        
         logger.info(f"ProductVariant saved: {self} (SKU: {self.sku})")
 
 
 class Customer(models.Model):
+    market = models.ForeignKey(Market, on_delete=models.CASCADE, null=True, blank=True, related_name='customers', verbose_name="Market")
     name = models.CharField(max_length=100, verbose_name="Mijoz ismi")
     phone = models.CharField(max_length=20, blank=True, verbose_name="Telefon")
     address = models.TextField(blank=True, verbose_name="Manzil")
@@ -195,6 +232,7 @@ class Sale(models.Model):
         ('credit', 'Qarzga'),
     ]
 
+    market = models.ForeignKey(Market, on_delete=models.CASCADE, null=True, blank=True, related_name='sales', verbose_name="Market")
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Mijoz")
     sale_date = models.DateTimeField(auto_now_add=True, verbose_name="Sotish sanasi")
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Jami summa")

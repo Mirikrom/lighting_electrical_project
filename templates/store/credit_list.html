@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load store_tags %}
 
 {% block title %}Qarzdorlar - Lustra & Lempala{% endblock %}
 
@@ -53,7 +54,7 @@
             </div>
             <div class="col-md-6">
                 <h5>Jami qarz summasi</h5>
-                <h2>{{ total_debt|floatformat:0 }} so'm</h2>
+                <h2>{{ total_debt|floatformat:0|comma_to_dot }} so'm</h2>
             </div>
         </div>
     </div>
@@ -80,7 +81,7 @@
                     <tr>
                         <td><strong>{{ debt.customer__name|default:"Noma'lum" }}</strong></td>
                         <td>{{ debt.customer__phone|default:"-" }}</td>
-                        <td><strong class="text-danger">{{ debt.total_debt|floatformat:0 }} so'm</strong></td>
+                        <td><strong class="text-danger">{{ debt.total_debt|floatformat:0|comma_to_dot }} so'm</strong></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -118,7 +119,7 @@
                     {% endif %}
                 </td>
                 <td>{{ credit.sale_date|date:"d.m.Y H:i" }}</td>
-                <td><strong class="text-danger">{{ credit.total_amount|floatformat:0 }} so'm</strong></td>
+                <td><strong class="text-danger">{{ credit.total_amount|floatformat:0|comma_to_dot }} so'm</strong></td>
                 <td>{{ credit.created_by.username|default:"-" }}</td>
                 <td>
                     <a href="{% url 'store:sale_detail' credit.pk %}" class="btn btn-sm btn-primary">

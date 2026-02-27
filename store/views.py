@@ -1,28 +1,132 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import login as auth_login, logout as auth_logout
+from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db.models import Q, Sum, Count
+from django.db import transaction
+from django.db.models import Q, Sum, Count, Prefetch
 from django.http import JsonResponse, HttpResponse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.conf import settings
-from .models import Product, Category, Sale, SaleItem, Customer, ProductVariant, Attribute, AttributeValue
+from django.urls import reverse_lazy
+from .models import Product, Category, Sale, SaleItem, Customer, ProductVariant, Attribute, AttributeValue, Market, UserProfile, ExchangeRate
+from .forms import RegisterForm
 from decimal import Decimal
+from django.utils import timezone
 import json
 import logging
 import uuid
 
 logger = logging.getLogger('store')
 
+DEFAULT_USD_RATE = Decimal('12500')
 
+
+def get_current_usd_rate(market):
+    """Joriy kunlik dollar kursi (1 USD = X so'm). Avval market bo'yicha, keyin global, keyin default."""
+    today = timezone.localdate()
+    # Avval shu market uchun bugun yoki eng so'nggi kurs
+    if market:
+        r = ExchangeRate.objects.filter(market=market).filter(date__lte=today).order_by('-date').first()
+        if r:
+            return r.rate
+    # Global kurs (market=None)
+    r = ExchangeRate.objects.filter(market__isnull=True).filter(date__lte=today).order_by('-date').first()
+    if r:
+        return r.rate
+    return DEFAULT_USD_RATE
+
+
+def get_request_market(request):
+    """Foydalanuvchi biriktirilgan market (kirish talab qilinadi)."""
+    if not request.user.is_authenticated:
+        return None
+    if not hasattr(request.user, 'profile'):
+        return None
+    return getattr(request.user.profile, 'market', None)
+
+
+def require_market(view_func):
+    """Kirish va market borligini tekshiradi; market bo'lmasa no_market sahifasiga yo'naltiradi."""
+    @login_required
+    def wrapper(request, *args, **kwargs):
+        market = get_request_market(request)
+        if market is None:
+            return redirect('store:no_market')
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
+def login_view(request):
+    """Login sahifasi — Django LoginView"""
+    if request.user.is_authenticated:
+        market = get_request_market(request)
+        if market:
+            return redirect(settings.LOGIN_REDIRECT_URL)
+        return redirect('store:no_market')
+    return LoginView.as_view(
+        template_name='store/login.html',
+        redirect_authenticated_user=True,
+    )(request)
+
+
+def register_view(request):
+    """Ro'yxatdan o'tish: login, parol, ixtiyoriy market nomi"""
+    if request.user.is_authenticated:
+        return redirect(settings.LOGIN_REDIRECT_URL)
+    if request.method == 'POST':
+        form = RegisterForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            market_name = (form.cleaned_data.get('market_name') or '').strip()
+            market = None
+            if market_name:
+                market = Market.objects.create(name=market_name)
+            profile = user.profile  # signal tomonidan yaratilgan
+            if market:
+                profile.market = market
+                profile.save()
+            auth_login(request, user)
+            if market:
+                messages.success(request, f'Hisobingiz va "{market.name}" marketi yaratildi.')
+            else:
+                messages.info(request, 'Hisobingiz yaratildi. Admin sizni marketga biriktirguncha kuting.')
+            return redirect('store:no_market' if not market else settings.LOGIN_REDIRECT_URL)
+        else:
+            messages.error(request, 'Formani to\'g\'ri to\'ldiring.')
+    else:
+        form = RegisterForm()
+    return render(request, 'store/register.html', {'form': form})
+
+
+def logout_view(request):
+    """Chiqish"""
+    auth_logout(request)
+    return redirect(settings.LOGOUT_REDIRECT_URL)
+
+
+def no_market_view(request):
+    """Market biriktirilmagan — admin kutish"""
+    if not request.user.is_authenticated:
+        return redirect('store:login')
+    market = get_request_market(request)
+    if market is not None:
+        return redirect(settings.LOGIN_REDIRECT_URL)
+    return render(request, 'store/no_market.html')
+
+
+@require_market
 def product_list(request):
     """Mahsulotlar ro'yxati — mahsulot bo'yicha guruhlash, har birida ranglar va qoldiq"""
+    market = get_request_market(request)
     variants = ProductVariant.objects.filter(
-        is_active=True, product__is_active=True
+        is_active=True, product__is_active=True,
+        product__category__market=market
     ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute')
-    categories = Category.objects.all()
+    categories = Category.objects.filter(market=market)
     
     category_id = request.GET.get('category')
     if category_id:
@@ -32,12 +136,21 @@ def product_list(request):
         variants = variants.filter(
             Q(product__name__icontains=search_query) | Q(sku__icontains=search_query)
         )
+    usd_rate = get_current_usd_rate(market)
     min_price = request.GET.get('min_price')
     max_price = request.GET.get('max_price')
     if min_price:
-        variants = variants.filter(price__gte=min_price)
+        try:
+            min_uzs = Decimal(min_price)
+            variants = variants.filter(price__gte=min_uzs / usd_rate)
+        except (ValueError, TypeError):
+            pass
     if max_price:
-        variants = variants.filter(price__lte=max_price)
+        try:
+            max_uzs = Decimal(max_price)
+            variants = variants.filter(price__lte=max_uzs / usd_rate)
+        except (ValueError, TypeError):
+            pass
     in_stock = request.GET.get('in_stock')
     if in_stock == 'true':
         variants = variants.filter(stock_quantity__gt=0)
@@ -56,26 +169,31 @@ def product_list(request):
         'categories': categories,
         'selected_category': int(category_id) if category_id else None,
         'search_query': search_query or '',
+        'usd_rate': usd_rate,
     }
     return render(request, 'store/product_list.html', context)
 
 
+@require_market
 def product_detail(request, pk):
     """Mahsulot tafsilotlari — bitta variant bo'yicha kiriladi, barcha variantlar (rang, narx, qoldiq) ko'rsatiladi"""
+    market = get_request_market(request)
     try:
-        variant = ProductVariant.objects.get(pk=pk, is_active=True, product__is_active=True)
+        variant = ProductVariant.objects.get(pk=pk, is_active=True, product__is_active=True, product__category__market=market)
         product = variant.product
         all_variants = product.variants.filter(is_active=True).select_related('product').prefetch_related('attribute_values__attribute').order_by('pk')
         profit = variant.price - variant.cost_price
         profit_percent = 0
         if variant.cost_price > 0:
             profit_percent = (profit / variant.cost_price) * 100
+        usd_rate = get_current_usd_rate(market)
         context = {
             'variant': variant,
             'product': product,
             'all_variants': all_variants,
             'profit': profit,
             'profit_percent': profit_percent,
+            'usd_rate': usd_rate,
         }
         logger.info(f"Product detail viewed: {variant}")
         return render(request, 'store/product_detail.html', context)
@@ -86,33 +204,39 @@ def product_detail(request, pk):
         if variant:
             profit = variant.price - variant.cost_price
             profit_percent = (profit / variant.cost_price) * 100 if variant.cost_price > 0 else 0
+            usd_rate = get_current_usd_rate(market)
             context = {
                 'variant': variant,
                 'product': product,
                 'all_variants': all_variants,
                 'profit': profit,
                 'profit_percent': profit_percent,
+                'usd_rate': usd_rate,
             }
         else:
+            usd_rate = get_current_usd_rate(market)
             context = {
                 'variant': None,
                 'product': product,
                 'all_variants': [],
                 'profit': 0,
                 'profit_percent': 0,
+                'usd_rate': usd_rate,
             }
         logger.info(f"Product detail viewed: {product}")
         return render(request, 'store/product_detail.html', context)
 
 
+@require_market
 def delete_product(request, pk):
     """Mahsulotni o'chirish"""
+    market = get_request_market(request)
     if request.method != 'POST':
         return redirect('store:product_list_old')
     
-    # Try to get ProductVariant first
+    # Try to get ProductVariant first (shu market)
     try:
-        variant = ProductVariant.objects.get(pk=pk)
+        variant = ProductVariant.objects.get(pk=pk, product__category__market=market)
         product_name = variant.product.name
         
         try:
@@ -169,9 +293,11 @@ def delete_product(request, pk):
             return redirect('store:product_list_old')
 
 
+@require_market
 def create_product(request):
-    """Yangi mahsulot qo'shish"""
-    categories = Category.objects.all()
+    """Yangi mahsulot qo'shish (yoki mavjud mahsulotni o'zgartirish / yangi variant qo'shish)"""
+    market = get_request_market(request)
+    categories = Category.objects.filter(market=market)
     # Get unique colors from existing variants (all categories)
     color_attr = Attribute.objects.filter(name='color').first()
     if color_attr:
@@ -179,8 +305,119 @@ def create_product(request):
     else:
         colors = []
     
+    initial_product = None
+    if request.method == 'GET':
+        product_id = request.GET.get('product_id')
+        variant_id = request.GET.get('variant_id')
+        if product_id:
+            try:
+                p = Product.objects.get(pk=int(product_id), is_active=True, category__market=market)
+                initial_product = {'id': p.id, 'name': p.name, 'category_id': p.category_id, 'unit': getattr(p, 'unit', 'dona'), 'description': (p.description or '')}
+                if variant_id:
+                    v = ProductVariant.objects.filter(
+                        pk=int(variant_id), product=p, is_active=True
+                    ).prefetch_related('attribute_values__attribute').first()
+                    if v:
+                        color = ''
+                        parametrlar = []
+                        for av in v.attribute_values.all():
+                            if av.attribute.name == 'color':
+                                color = av.value
+                            elif av.attribute.name == 'parametr':
+                                parametrlar.append(av.value)
+                        usd_rate = get_current_usd_rate(market)
+                        # Narx bazada USD da — forma $ da ko'rsatamiz
+                        initial_product['variant'] = {
+                            'id': v.id,
+                            'color': color,
+                            'parametrlar': parametrlar,
+                            'price': float(v.price),
+                            'cost_price': float(v.cost_price or 0),
+                            'price_usd': round(float(v.price), 2),
+                            'cost_price_usd': round(float(v.cost_price or 0), 2),
+                            'stock_quantity': max(0, int(v.stock_quantity)),
+                            'unit': getattr(v.product, 'unit', 'dona'),
+                        }
+            except (Product.DoesNotExist, ValueError):
+                pass
+    
     if request.method == 'POST':
         try:
+            edit_variant_id = request.POST.get('edit_variant_id', '').strip()
+            if edit_variant_id:
+                # Variantni yangilash (rang, narx, tannarx, miqdor, rasm)
+                try:
+                    vid = int(edit_variant_id)
+                    variant = ProductVariant.objects.get(
+                        pk=vid, is_active=True, product__category__market=market
+                    )
+                    usd_rate = get_current_usd_rate(market)
+                    price = request.POST.get('price')
+                    price_currency = request.POST.get('price_currency', 'USD')
+                    cost_price = request.POST.get('cost_price', 0)
+                    cost_currency = request.POST.get('cost_currency', 'USD')
+                    stock_quantity = request.POST.get('stock_quantity', 0)
+                    color = request.POST.get('color', '').strip()
+                    new_color = request.POST.get('new_color', '').strip()
+                    final_color = (new_color or color or '').strip()
+                    # Rangni yangilash
+                    if final_color:
+                        color_attr, _ = Attribute.objects.get_or_create(
+                            name='color',
+                            defaults={'display_name': 'Rang'}
+                        )
+                        color_value, _ = AttributeValue.objects.get_or_create(
+                            attribute=color_attr,
+                            value=final_color.upper()
+                        )
+                        # Eski rang(lar)ni olib tashlash
+                        old_color_values = list(
+                            variant.attribute_values.filter(attribute=color_attr)
+                        )
+                        for ov in old_color_values:
+                            variant.attribute_values.remove(ov)
+                        variant.attribute_values.add(color_value)
+                    # Parametrlar yangilash
+                    parametr_list = [x.strip() for x in request.POST.getlist('parametr') if x and x.strip()]
+                    parametr_attr, _ = Attribute.objects.get_or_create(
+                        name='parametr',
+                        defaults={'display_name': 'Parametr'}
+                    )
+                    old_param = list(variant.attribute_values.filter(attribute=parametr_attr))
+                    for op in old_param:
+                        variant.attribute_values.remove(op)
+                    for pval in parametr_list[:5]:
+                        p_av, _ = AttributeValue.objects.get_or_create(
+                            attribute=parametr_attr,
+                            value=pval.upper()
+                        )
+                        variant.attribute_values.add(p_av)
+                    # Narx, tannarx, miqdor — bazada USD
+                    if price and str(price).strip():
+                        p_val = Decimal(str(price))
+                        if price_currency == 'UZS':
+                            p_val = p_val / Decimal(usd_rate)
+                        variant.price = p_val
+                    if cost_price is not None and str(cost_price).strip() != '':
+                        c_val = Decimal(str(cost_price))
+                        if cost_currency == 'UZS':
+                            c_val = c_val / Decimal(usd_rate)
+                        variant.cost_price = c_val
+                    if stock_quantity is not None and str(stock_quantity).strip() != '':
+                        variant.stock_quantity = max(0, int(float(stock_quantity)))
+                    image = request.FILES.get('image')
+                    if image:
+                        variant.image = image
+                    update_fields = ['price', 'cost_price', 'stock_quantity']
+                    if image:
+                        update_fields.append('image')
+                    variant.save(update_fields=update_fields)
+                    messages.success(request, f'Variant yangilandi: {variant.product.name}')
+                    return redirect('store:product_detail', pk=variant.pk)
+                except (ProductVariant.DoesNotExist, ValueError) as e:
+                    logger.warning(f"Edit variant failed: {e}")
+                    messages.error(request, 'Variant topilmadi.')
+            
             name = request.POST.get('name')
             category_id = request.POST.get('category')
             new_category_name = request.POST.get('new_category', '').strip()
@@ -211,33 +448,32 @@ def create_product(request):
                 try:
                     pid = int(existing_product_id)
                     try:
-                        existing_product = Product.objects.get(pk=pid)
+                        existing_product = Product.objects.get(pk=pid, category__market=market)
                     except Product.DoesNotExist:
-                        variant = ProductVariant.objects.get(pk=pid)
+                        variant = ProductVariant.objects.get(pk=pid, product__category__market=market)
                         existing_product = variant.product
                     
-                    # Get color
-                    final_color = new_color if new_color else color
-                    if not final_color:
-                        messages.error(request, 'Rang tanlanishi yoki yangi rang nomi kiritilishi shart!')
-                        return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
+                    # Rang ixtiyoriy
+                    final_color = (new_color or color or '').strip()
+                    color_value = None
+                    if final_color:
+                        color_attr, _ = Attribute.objects.get_or_create(
+                            name='color',
+                            defaults={'display_name': 'Rang'}
+                        )
+                        color_value, _ = AttributeValue.objects.get_or_create(
+                            attribute=color_attr,
+                            value=final_color.upper()
+                        )
                     
-                    # Get or create color attribute and value
-                    color_attr, _ = Attribute.objects.get_or_create(
-                        name='color',
-                        defaults={'display_name': 'Rang'}
-                    )
-                    color_value, _ = AttributeValue.objects.get_or_create(
-                        attribute=color_attr,
-                        value=final_color.upper()
-                    )
-                    
-                    # Check if variant with this color already exists
-                    existing_variant = ProductVariant.objects.filter(
-                        product=existing_product,
-                        attribute_values=color_value,
-                        is_active=True
-                    ).first()
+                    # Rang berilgan bo'lsa, shu rangdagi variant bormi tekshiramiz
+                    existing_variant = None
+                    if color_value:
+                        existing_variant = ProductVariant.objects.filter(
+                            product=existing_product,
+                            attribute_values=color_value,
+                            is_active=True
+                        ).first()
                     
                     if existing_variant:
                         # Variant already exists - update stock
@@ -245,45 +481,63 @@ def create_product(request):
                         if new_quantity <= 0:
                             messages.error(request, 'Qancha kelgan sonini kiriting!')
                             return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
-                        existing_variant.stock_quantity += new_quantity
+                        existing_variant.stock_quantity = max(0, existing_variant.stock_quantity) + new_quantity
                         existing_variant.save()
                         logger.info(f"Variant stock updated: {existing_variant}, Added: {new_quantity}, New total: {existing_variant.stock_quantity}")
                         messages.success(request, f'Mahsulot soni yangilandi: {existing_variant} (+{new_quantity} dona, Jami: {existing_variant.stock_quantity} dona)')
                         return redirect('store:product_detail', pk=existing_variant.pk)
                     else:
-                        # Create new variant with new color — narxni formadan yoki birinchi variantdan olamiz
-                        usd_rate = getattr(settings, 'USD_TO_UZS_RATE', 12500)
+                        # Yangi variant — narx bazada USD da saqlanadi
+                        usd_rate = get_current_usd_rate(market)
                         first_variant = existing_product.variants.filter(is_active=True).first()
                         if price and str(price).strip() and float(str(price)) > 0:
-                            default_price = Decimal(str(price)) * Decimal(usd_rate) if price_currency == 'USD' else Decimal(str(price))
+                            if price_currency == 'USD':
+                                price_usd = Decimal(str(price))
+                            else:
+                                price_usd = Decimal(str(price)) / Decimal(usd_rate)
                         elif first_variant:
-                            default_price = first_variant.price
+                            price_usd = first_variant.price
                         else:
                             messages.error(request, 'Sotish narxi kiritilishi shart!')
                             return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
                         if cost_price and str(cost_price).strip() and float(str(cost_price)) >= 0:
-                            default_cost_price = Decimal(str(cost_price)) * Decimal(usd_rate) if cost_currency == 'USD' else Decimal(str(cost_price))
+                            if cost_currency == 'USD':
+                                cost_price_usd = Decimal(str(cost_price))
+                            else:
+                                cost_price_usd = Decimal(str(cost_price)) / Decimal(usd_rate)
                         elif first_variant:
-                            default_cost_price = first_variant.cost_price
+                            cost_price_usd = first_variant.cost_price
                         else:
-                            default_cost_price = Decimal('0')
+                            cost_price_usd = Decimal('0')
                         
-                        # Create new variant — SKU unique bo'lishi kerak (UNIQUE constraint)
-                        cat_prefix = (existing_product.category.name[:3].upper() if existing_product.category else "PRD")
-                        unique_sku = f"{cat_prefix}-{existing_product.id}-{final_color.upper()[:2]}-{uuid.uuid4().hex[:6]}"
+                        # Create new variant — kod model save() da avtomatik: nom 3 harf + raqam (raz-001, led-002)
                         new_variant = ProductVariant(
                             product=existing_product,
-                            sku=unique_sku,
-                            cost_price=default_cost_price,
-                            price=default_price,
-                            stock_quantity=int(stock_quantity) if stock_quantity else int(quantity_received) if quantity_received else 0,
+                            cost_price=cost_price_usd,
+                            price=price_usd,
+                            stock_quantity=max(0, int(stock_quantity) if stock_quantity else int(quantity_received) if quantity_received else 0),
                             image=image
                         )
                         new_variant.save()
-                        new_variant.attribute_values.add(color_value)
+                        if color_value:
+                            new_variant.attribute_values.add(color_value)
+                        # Parametrlar (1tali, dumaloq, kotta va h.k.)
+                        parametr_list = [x.strip() for x in request.POST.getlist('parametr') if x and x.strip()]
+                        if parametr_list:
+                            parametr_attr, _ = Attribute.objects.get_or_create(
+                                name='parametr',
+                                defaults={'display_name': 'Parametr'}
+                            )
+                            for pval in parametr_list[:5]:
+                                p_av, _ = AttributeValue.objects.get_or_create(
+                                    attribute=parametr_attr,
+                                    value=pval.upper()
+                                )
+                                new_variant.attribute_values.add(p_av)
                         
                         logger.info(f"New variant created: {new_variant} (SKU: {new_variant.sku})")
-                        messages.success(request, f'Yangi variant muvaffaqiyatli qo\'shildi: {existing_product.name} ({final_color.upper()})')
+                        msg_suffix = f' ({final_color.upper()})' if final_color else ''
+                        messages.success(request, f'Yangi variant muvaffaqiyatli qo\'shildi: {existing_product.name}{msg_suffix}')
                         return redirect('store:product_detail', pk=new_variant.pk)
                         
                 except (Product.DoesNotExist, ProductVariant.DoesNotExist, ValueError) as e:
@@ -302,15 +556,16 @@ def create_product(request):
             # Handle category - create new if provided
             category = None
             if new_category_name:
-                # Create new category
+                # Create new category (market bilan)
                 category, created = Category.objects.get_or_create(
+                    market=market,
                     name=new_category_name,
                     defaults={'description': ''}
                 )
                 logger.info(f"New category created: {category.name}")
             elif category_id:
                 try:
-                    category = Category.objects.get(pk=category_id)
+                    category = Category.objects.get(pk=category_id, market=market)
                 except Category.DoesNotExist:
                     messages.error(request, 'Noto\'g\'ri kategoriya!')
                     return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
@@ -318,24 +573,22 @@ def create_product(request):
                 messages.error(request, 'Kategoriya tanlanishi yoki yangi kategoriya nomi kiritilishi shart!')
                 return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
             
-            # Convert to UZS if USD (only for new products)
-            usd_rate = getattr(settings, 'USD_TO_UZS_RATE', 12500)
+            # Narx bazada USD da saqlanadi — formadan USD yoki so'm ni USD ga o'tkazamiz
+            usd_rate = get_current_usd_rate(market)
             try:
                 if cost_price and cost_price != '0' and cost_price != '':
                     if cost_currency == 'USD':
-                        cost_price = Decimal(str(cost_price)) * Decimal(usd_rate)
-                    else:
                         cost_price = Decimal(str(cost_price))
+                    else:
+                        cost_price = Decimal(str(cost_price)) / Decimal(usd_rate)
                 else:
                     cost_price = Decimal('0')
                 
-                # Price is already validated above, so convert it
                 if price_currency == 'USD':
-                    price = Decimal(str(price)) * Decimal(usd_rate)
-                else:
                     price = Decimal(str(price))
+                else:
+                    price = Decimal(str(price)) / Decimal(usd_rate)
                 
-                # Validate price is greater than 0.01 (model requirement)
                 if price < Decimal('0.01'):
                     messages.error(request, 'Sotish narxi 0.01 dan katta bo\'lishi kerak!')
                     return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
@@ -344,27 +597,41 @@ def create_product(request):
                 messages.error(request, f'Narx noto\'g\'ri formatda kiritilgan!')
                 return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
             
-            # Handle color - create Attribute and AttributeValue if needed
-            final_color = new_color if new_color else color
+            # Handle color va parametrlar - Attribute/AttributeValue
+            final_color = (new_color or color or '').strip()
             attribute_values = []
-            
             if final_color:
-                # Get or create color attribute
                 color_attr, _ = Attribute.objects.get_or_create(
                     name='color',
                     defaults={'display_name': 'Rang'}
                 )
-                # Get or create color value
                 color_value, _ = AttributeValue.objects.get_or_create(
                     attribute=color_attr,
-                    value=final_color
+                    value=final_color.upper()
                 )
                 attribute_values.append(color_value)
+            # Parametrlar (5 tagacha: 1tali, dumaloq, kotta va h.k.)
+            parametr_list = [x.strip() for x in request.POST.getlist('parametr') if x and x.strip()]
+            if parametr_list:
+                parametr_attr, _ = Attribute.objects.get_or_create(
+                    name='parametr',
+                    defaults={'display_name': 'Parametr'}
+                )
+                for pval in parametr_list[:5]:
+                    p_av, _ = AttributeValue.objects.get_or_create(
+                        attribute=parametr_attr,
+                        value=pval.upper()
+                    )
+                    attribute_values.append(p_av)
             
+            unit = request.POST.get('unit', 'dona')
+            if unit not in ('dona', 'metr'):
+                unit = 'dona'
             # Create Product (asosiy mahsulot)
             product = Product(
                 name=name,
                 category=category,
+                unit=unit,
                 description=description
             )
             
@@ -375,13 +642,13 @@ def create_product(request):
                 product.save()
                 logger.info(f"Product created: {product.name} (ID: {product.id})")
                 
-                # Create ProductVariant (narx, ombor, SKU bilan)
+                # Create ProductVariant — kod model save() da avtomatik (nom 3 harf + raqam)
                 variant = ProductVariant(
                     product=product,
-                    sku=sku if sku else None,
+                    sku=None,
                     cost_price=cost_price,
                     price=price,
-                    stock_quantity=int(stock_quantity) if stock_quantity else 0,
+                    stock_quantity=max(0, int(stock_quantity) if stock_quantity else 0),
                     image=image  # Variant uchun ham rasm
                 )
                 
@@ -390,19 +657,6 @@ def create_product(request):
                 # Add attribute values to variant (after save)
                 if attribute_values:
                     variant.attribute_values.set(attribute_values)
-                    # Update SKU with attribute values after setting them
-                    if variant.pk:
-                        try:
-                            attr_values = list(variant.attribute_values.all()[:3])
-                            if attr_values:
-                                category_prefix = variant.product.category.name[:3].upper() if variant.product and variant.product.category else "PRD"
-                                variant_suffix = "-" + "-".join([av.value[:2].upper() for av in attr_values])
-                                new_sku = f"{category_prefix}-{variant.id:04d}{variant_suffix}"
-                                if new_sku != variant.sku:
-                                    variant.sku = new_sku
-                                    variant.save(update_fields=['sku'])
-                        except Exception as e:
-                            logger.error(f"Error updating SKU after setting attribute values: {str(e)}")
                 
                 logger.info(f"ProductVariant created successfully: {variant} (SKU: {variant.sku}, ID: {variant.id})")
                 messages.success(request, f'Mahsulot muvaffaqiyatli qo\'shildi: {product.name}')
@@ -416,12 +670,17 @@ def create_product(request):
             logger.error(f"Error creating product: {str(e)}")
             messages.error(request, f'Xatolik: {str(e)}')
     
-    return render(request, 'store/create_product.html', {'categories': categories})
+    context = {'categories': categories, 'colors': colors}
+    if initial_product is not None:
+        context['initial_product'] = initial_product
+    return render(request, 'store/create_product.html', context)
 
 
+@require_market
 @csrf_exempt
 def create_category_ajax(request):
     """AJAX orqali kategoriya qo'shish"""
+    market = get_request_market(request)
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -431,6 +690,7 @@ def create_category_ajax(request):
                 return JsonResponse({'error': 'Kategoriya nomi kiritilishi shart!'}, status=400)
             
             category, created = Category.objects.get_or_create(
+                market=market,
                 name=category_name,
                 defaults={'description': data.get('description', '')}
             )
@@ -461,9 +721,11 @@ def create_category_ajax(request):
     return JsonResponse({'error': 'Invalid method'}, status=405)
 
 
+@require_market
 @csrf_exempt
 def create_sale(request):
     """Yangi sotuv yaratish"""
+    market = get_request_market(request)
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -472,65 +734,82 @@ def create_sale(request):
             payment_method = data.get('payment_method', 'cash')
             items = data.get('items', [])
             
-            # Create or get customer
-            customer = None
-            if customer_name:
-                # If phone is provided, search by phone first, otherwise by name
-                if customer_phone:
-                    customer, created = Customer.objects.get_or_create(
-                        phone=customer_phone,
-                        defaults={'name': customer_name}
-                    )
-                    # Update name if customer exists but name is different
-                    if not created and customer.name != customer_name:
-                        customer.name = customer_name
-                        customer.save()
-                else:
-                    # If no phone, search by name
-                    customer, created = Customer.objects.get_or_create(
-                        name=customer_name,
-                        defaults={'phone': ''}
-                    )
+            if not items:
+                return JsonResponse({'error': 'Savat bo\'sh'}, status=400)
             
-            usd_rate = data.get('usd_rate')
-            sale_kwargs = dict(
-                customer=customer,
-                payment_method=payment_method,
-                created_by=request.user if request.user.is_authenticated else None
-            )
-            if usd_rate is not None and usd_rate != '':
-                try:
-                    sale_kwargs['usd_rate'] = Decimal(str(usd_rate))
-                except (ValueError, TypeError):
-                    pass
-            sale = Sale.objects.create(**sale_kwargs)
-            
-            # Add items
-            total = Decimal('0')
-            for item_data in items:
-                variant = ProductVariant.objects.get(pk=item_data['product_id'])
-                quantity = int(item_data['quantity'])
-                unit_price = Decimal(str(item_data['price']))
+            # Bir vaqtda mobil va kompyuter bir xil mahsulotni sotganda konflikt bo'lmasligi uchun
+            # tranzaksiyada variantlarni qulflaymiz (select_for_update) — faqat shu market mahsulotlari
+            with transaction.atomic():
+                variant_ids = [int(item_data['product_id']) for item_data in items]
+                variants_dict = {
+                    v.id: v for v in ProductVariant.objects.select_for_update().filter(
+                        pk__in=variant_ids,
+                        product__category__market=market
+                    )
+                }
+                if len(variants_dict) != len(variant_ids):
+                    return JsonResponse({'error': 'Mahsulot topilmadi'}, status=400)
                 
-                if variant.stock_quantity < quantity:
-                    sale.delete()
-                    return JsonResponse({'error': f'{variant} uchun yetarli mahsulot yo\'q'}, status=400)
+                # Zaxirani tekshirish (qulflangan zaxira bo'yicha)
+                for item_data in items:
+                    vid = int(item_data['product_id'])
+                    quantity = int(item_data['quantity'])
+                    if variants_dict[vid].stock_quantity < quantity:
+                        return JsonResponse({
+                            'error': f'{variants_dict[vid]} uchun yetarli mahsulot yo\'q (omborda: {variants_dict[vid].stock_quantity} dona)'
+                        }, status=400)
                 
-                SaleItem.objects.create(
-                    sale=sale,
-                    variant=variant,
-                    quantity=quantity,
-                    unit_price=unit_price
+                # Mijoz (shu market uchun)
+                customer = None
+                if customer_name:
+                    if customer_phone:
+                        customer, created = Customer.objects.get_or_create(
+                            market=market,
+                            phone=customer_phone,
+                            defaults={'name': customer_name}
+                        )
+                        if not created and customer.name != customer_name:
+                            customer.name = customer_name
+                            customer.save()
+                    else:
+                        customer, created = Customer.objects.get_or_create(
+                            market=market,
+                            name=customer_name,
+                            defaults={'phone': ''}
+                        )
+                
+                usd_rate = data.get('usd_rate')
+                sale_kwargs = dict(
+                    market=market,
+                    customer=customer,
+                    payment_method=payment_method,
+                    created_by=request.user if request.user.is_authenticated else None
                 )
+                if usd_rate is not None and usd_rate != '':
+                    try:
+                        sale_kwargs['usd_rate'] = Decimal(str(usd_rate))
+                    except (ValueError, TypeError):
+                        pass
+                sale = Sale.objects.create(**sale_kwargs)
                 
-                # Update variant stock
-                variant.stock_quantity -= quantity
-                variant.save()
+                total = Decimal('0')
+                for item_data in items:
+                    variant = variants_dict[int(item_data['product_id'])]
+                    quantity = int(item_data['quantity'])
+                    unit_price = Decimal(str(item_data['price']))
+                    
+                    SaleItem.objects.create(
+                        sale=sale,
+                        variant=variant,
+                        quantity=quantity,
+                        unit_price=unit_price
+                    )
+                    variant.stock_quantity = max(0, variant.stock_quantity - quantity)
+                    variant.save(update_fields=['stock_quantity'])
+                    total += unit_price * quantity
                 
-                total += unit_price * quantity
-            
-            sale.total_amount = total
-            sale.save()
+                sale.total_amount = total
+                sale.save(update_fields=['total_amount'])
             
             logger.info(f"Sale created: {sale.id}, Total: {total} so'm")
             return JsonResponse({'success': True, 'sale_id': sale.id})
@@ -539,28 +818,30 @@ def create_sale(request):
             logger.error(f"Error creating sale: {str(e)}")
             return JsonResponse({'error': str(e)}, status=400)
     
-    categories = Category.objects.all()
+    categories = Category.objects.filter(market=market)
     
-    # Get top 5 most sold variants
+    # Top 8 eng ko'p sotilgan variantlar (1-o'rinda eng ko'p sotilgan)
     top_sold_variants = ProductVariant.objects.filter(
         is_active=True,
         product__is_active=True,
+        product__category__market=market,
         stock_quantity__gt=0
     ).annotate(
         total_sold=Sum('saleitem__quantity')
     ).filter(
         total_sold__gt=0
-    ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute').order_by('-total_sold')[:5]
+    ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute').order_by('-total_sold')[:8]
     
-    # If no sales yet, get last 5 added variants
     if not top_sold_variants.exists():
         top_sold_variants = ProductVariant.objects.filter(
             is_active=True,
             product__is_active=True,
+            product__category__market=market,
             stock_quantity__gt=0
-        ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute').order_by('-created_at')[:5]
+        ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute').order_by('-created_at')[:8]
     
-    # Prepare top products for autocomplete (variants as JSON)
+    current_usd_rate = get_current_usd_rate(market)
+    # JSON da narx USD da — $ o'zgarmasligi uchun, so'm faqat kurs bo'yicha hisoblanadi
     top_products_json = []
     for v in top_sold_variants:
         color = ''
@@ -569,7 +850,7 @@ def create_sale(request):
                 color = av.value
                 break
         top_products_json.append({
-            'id': v.id,  # Variant ID
+            'id': v.id,
             'product_id': v.product.id,
             'name': v.product.name,
             'variant_name': str(v),
@@ -577,18 +858,21 @@ def create_sale(request):
             'sku': v.sku,
             'price': str(v.price),
             'stock': v.stock_quantity,
+            'unit': v.product.unit,
         })
-    
     return render(request, 'store/create_sale.html', {
         'top_products': top_sold_variants,
         'top_products_json': json.dumps(top_products_json),
-        'categories': categories
+        'categories': categories,
+        'current_usd_rate': current_usd_rate,
     })
 
 
+@require_market
 def credit_list(request):
     """Qarzdorlar ro'yxati"""
-    credits = Sale.objects.filter(payment_method='credit').select_related('customer', 'created_by')
+    market = get_request_market(request)
+    credits = Sale.objects.filter(market=market, payment_method='credit').select_related('customer', 'created_by')
     
     # Filter by date range
     date_from = request.GET.get('date_from')
@@ -611,8 +895,8 @@ def credit_list(request):
     
     total_debt = credits.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
     
-    # Get all customers for filter
-    customers = Customer.objects.filter(sale__payment_method='credit').distinct()
+    # Get all customers for filter (shu market)
+    customers = Customer.objects.filter(market=market, sale__payment_method='credit').distinct()
     
     return render(request, 'store/credit_list.html', {
         'credits': credits,
@@ -622,9 +906,56 @@ def credit_list(request):
     })
 
 
+@require_market
+def exchange_rate_view(request):
+    """Kunlik dollar kursini kiritish/o'zgartirish. Kurs mahsulot narxlari va sotuvda ishlatiladi."""
+    market = get_request_market(request)
+    today = timezone.localdate()
+    current_rate = get_current_usd_rate(market)
+    # Bugungi kurs (shu market uchun) mavjudmi
+    today_record = ExchangeRate.objects.filter(market=market).filter(date=today).first() if market else None
+    if not market:
+        today_record = ExchangeRate.objects.filter(market__isnull=True).filter(date=today).first()
+
+    if request.method == 'POST':
+        rate_str = request.POST.get('rate', '').strip()
+        if not rate_str:
+            messages.error(request, 'Kurs qiymatini kiriting.')
+            return redirect('store:exchange_rate')
+        try:
+            rate_val = Decimal(rate_str.replace(',', '.'))
+            if rate_val <= 0:
+                messages.error(request, 'Kurs musbat son bo\'lishi kerak.')
+                return redirect('store:exchange_rate')
+        except (ValueError, TypeError):
+            messages.error(request, 'Noto\'g\'ri format.')
+            return redirect('store:exchange_rate')
+        obj, created = ExchangeRate.objects.update_or_create(
+            market=market,
+            date=today,
+            defaults={'rate': rate_val}
+        )
+        next_url = request.GET.get('next', '').strip()
+        if next_url and next_url.startswith('/') and not next_url.startswith('//'):
+            return redirect(next_url)
+        if created:
+            messages.success(request, f'Kurs saqlandi: 1 USD = {rate_val} so\'m')
+        else:
+            messages.success(request, f'Kurs yangilandi: 1 USD = {rate_val} so\'m')
+        return redirect('store:exchange_rate')
+
+    return render(request, 'store/exchange_rate.html', {
+        'current_rate': current_rate,
+        'today_record': today_record,
+        'today': today,
+    })
+
+
+@require_market
 def sale_list(request):
     """Sotuvlar ro'yxati"""
-    sales = Sale.objects.all().select_related('customer', 'created_by')
+    market = get_request_market(request)
+    sales = Sale.objects.filter(market=market).select_related('customer', 'created_by')
     
     # Filter by date range
     date_from = request.GET.get('date_from')
@@ -646,17 +977,26 @@ def sale_list(request):
     return render(request, 'store/sale_list.html', context)
 
 
+@require_market
 def sale_detail(request, pk):
     """Sotuv tafsilotlari va chek"""
-    sale = get_object_or_404(Sale, pk=pk)
+    market = get_request_market(request)
+    sale = get_object_or_404(Sale, pk=pk, market=market)
     return render(request, 'store/sale_detail.html', {'sale': sale})
 
 
+@require_market
 def print_receipt(request, pk):
     """Chek chiqarish"""
-    sale = get_object_or_404(Sale, pk=pk)
+    market = get_request_market(request)
+    sale = get_object_or_404(
+        Sale.objects.prefetch_related(
+            Prefetch('items', queryset=SaleItem.objects.select_related('variant').prefetch_related('variant__attribute_values__attribute'))
+        ),
+        pk=pk, market=market
+    )
     logger.info(f"Receipt printed for sale: {sale.id}")
-    receipt_rate = float(sale.usd_rate) if sale.usd_rate else 12500
+    receipt_rate = float(sale.usd_rate) if sale.usd_rate else float(get_current_usd_rate(market))
     receipt_rate_formatted = f"{receipt_rate:,.0f}"
     # Telegramga yuborish uchun matn (qurilma: PC/Mac/Android — shu qurilmadagi Telegram ochiladi)
     lines = [
@@ -676,7 +1016,14 @@ def print_receipt(request, pk):
     lines.append('')
     for item in sale.items.all():
         usd = float(item.subtotal) / receipt_rate
-        lines.append(f"{item.product.name}  {item.quantity}x  ${usd:.2f}")
+        product = item.variant.product if item.variant else getattr(item, 'product_old', None)
+        unit = getattr(product, 'unit', 'dona') if product else 'dona'
+        qty_suffix = " M" if unit == 'metr' else "x"
+        lines.append(f"{item.product.name}  {item.quantity}{qty_suffix}  ${usd:.2f}")
+        if item.variant:
+            params = [av.value for av in item.variant.attribute_values.all() if getattr(av.attribute, 'name', '') == 'parametr']
+            if params:
+                lines.append("  " + ", ".join(params))
     total_usd = float(sale.total_amount) / receipt_rate
     total_usd_formatted = f"{total_usd:,.2f}"
     total_soom_formatted = f"{float(sale.total_amount):,.0f}"
@@ -696,12 +1043,17 @@ def print_receipt(request, pk):
     return response
 
 
+@require_market
 def get_products_json(request):
     """AJAX uchun mahsulotlar JSON"""
+    market = get_request_market(request)
     category_id = request.GET.get('category_id')
     search = request.GET.get('search', '')
     
-    variants = ProductVariant.objects.filter(is_active=True, product__is_active=True, stock_quantity__gt=0).select_related('product', 'product__category')
+    variants = ProductVariant.objects.filter(
+        is_active=True, product__is_active=True, stock_quantity__gt=0,
+        product__category__market=market
+    ).select_related('product', 'product__category')
     
     if category_id:
         variants = variants.filter(product__category_id=category_id)
@@ -711,57 +1063,66 @@ def get_products_json(request):
             Q(product__name__icontains=search) | Q(sku__icontains=search)
         )
     
+    rate = get_current_usd_rate(market)
     data = [{
         'id': v.id,
         'name': v.product.name,
         'variant_name': str(v),
-        'price': str(v.price),
+        'price': str(v.price * rate),  # so'm da (kassa savatida)
         'stock': v.stock_quantity,
         'sku': v.sku,
+        'unit': v.product.unit,
         'image': v.image.url if v.image else (v.product.image.url if v.product.image else ''),
-    } for v in variants[:50]]  # Limit to 50 for performance
+    } for v in variants[:50]]
     
     return JsonResponse({'products': data})
 
 
+@require_market
 def search_products_autocomplete(request):
-    """Autocomplete uchun mahsulotlarni qidirish - variantlar bo'yicha"""
+    """Autocomplete uchun mahsulotlarni qidirish - variantlar bo'yicha.
+    include_out_of_stock=1 bo'lsa (mahsulot qo'shish sahifasi) qolmagan variantlar ham qaytadi."""
+    market = get_request_market(request)
     query = request.GET.get('q', '').strip()
+    include_out_of_stock = request.GET.get('include_out_of_stock') == '1'
     
     if len(query) < 2:
         return JsonResponse({'products': []})
     
-    # Search variants by product name or SKU
     variants = ProductVariant.objects.filter(
         is_active=True,
         product__is_active=True,
-        stock_quantity__gt=0
+        product__category__market=market
     ).filter(
         Q(product__name__icontains=query) | Q(sku__icontains=query)
-    ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute')[:20]  # Ko'proq variant — guruhlashdan keyin bir nechta mahsulot chiqadi
+    ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute')
+    if not include_out_of_stock:
+        variants = variants.filter(stock_quantity__gt=0)
+    variants = variants[:20]
     
+    rate = get_current_usd_rate(market)
     data = []
     for v in variants:
-        # Get color from attribute values
         color = ''
         for av in v.attribute_values.all():
             if av.attribute.name == 'color':
                 color = av.value
                 break
-        
+        # Narx bazada USD — API so'm da qaytaramiz (ko'rsatish va forma uchun)
         data.append({
-            'id': v.id,  # Variant ID
+            'id': v.id,
             'product_id': v.product.id,
             'name': v.product.name,
             'variant_name': str(v),
             'sku': v.sku,
-            'price': str(v.price),
-            'cost_price': str(v.cost_price) if v.cost_price else '0',
+            'price': str(v.price * rate),
+            'cost_price': str((v.cost_price or 0) * rate),
             'category': v.product.category.name if v.product.category else '',
             'category_id': v.product.category.id if v.product.category else None,
             'color': color,
             'description': v.product.description or '',
             'stock': v.stock_quantity,
+            'unit': v.product.unit,
         })
     
     # Sort by name to show similar products together
@@ -770,16 +1131,18 @@ def search_products_autocomplete(request):
     return JsonResponse({'products': data})
 
 
+@require_market
 @csrf_exempt
 def get_colors_by_category(request):
     """Kategoriya bo'yicha ranglarni qaytarish"""
+    market = get_request_market(request)
     category_id = request.GET.get('category_id')
     
     if not category_id:
         return JsonResponse({'colors': []})
     
     try:
-        category = Category.objects.get(pk=category_id)
+        category = Category.objects.get(pk=category_id, market=market)
         # Get colors from variants that belong to products in this category
         color_attr = Attribute.objects.filter(name='color').first()
         
@@ -807,12 +1170,64 @@ def get_colors_by_category(request):
         return JsonResponse({'colors': []})
 
 
-def get_product_variants_json(request, product_id):
-    """Mahsulotning barcha variantlari (rang, narx, qoldiq) — create_product da mavjud variantlarni ko'rsatish uchun"""
+@require_market
+def get_variant_price(request, variant_id):
+    """Variantning joriy narxini bazadan qaytaradi (hamma joyda bir xil narx — bitta manba)."""
+    market = get_request_market(request)
     try:
-        product = Product.objects.get(pk=product_id, is_active=True)
+        variant = ProductVariant.objects.get(
+            pk=variant_id, is_active=True, product__category__market=market
+        )
+        return JsonResponse({'price_usd': float(variant.price)})
+    except ProductVariant.DoesNotExist:
+        return JsonResponse({'error': 'Variant topilmadi'}, status=404)
+
+
+@require_market
+@csrf_exempt
+def update_variant_price(request, variant_id):
+    """Kassada korzinkadagi mahsulot narxini o'zgartirish — variant narxi bazada ham yangilanadi (hamma joyda)."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST kerak'}, status=405)
+    market = get_request_market(request)
+    try:
+        variant = ProductVariant.objects.get(
+            pk=variant_id, is_active=True, product__category__market=market
+        )
+    except ProductVariant.DoesNotExist:
+        return JsonResponse({'error': 'Variant topilmadi'}, status=404)
+    try:
+        data = json.loads(request.body) if request.body else {}
+        price_usd = data.get('price_usd')
+        if price_usd is not None:
+            price_usd = Decimal(str(price_usd))
+            if price_usd < Decimal('0'):
+                return JsonResponse({'error': 'Narx manfiy bo\'lmasin'}, status=400)
+            variant.price = price_usd.quantize(Decimal('0.01'))
+        else:
+            price_soom = data.get('price_soom')
+            if price_soom is None:
+                return JsonResponse({'error': 'price_usd yoki price_soom kerak'}, status=400)
+            price_soom = Decimal(str(price_soom))
+            if price_soom < 0:
+                return JsonResponse({'error': 'Narx manfiy bo\'lmasin'}, status=400)
+            rate = get_current_usd_rate(market)
+            variant.price = (price_soom / rate).quantize(Decimal('0.01'))
+        variant.save(update_fields=['price'])
+        return JsonResponse({'success': True, 'price_usd': float(variant.price)})
+    except (ValueError, TypeError) as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@require_market
+def get_product_variants_json(request, product_id):
+    """Mahsulotning barcha variantlari (rang, narx so'mda, qoldiq) — create_product da mavjud variantlarni ko'rsatish uchun"""
+    market = get_request_market(request)
+    try:
+        product = Product.objects.get(pk=product_id, is_active=True, category__market=market)
     except Product.DoesNotExist:
         return JsonResponse({'variants': [], 'product_name': ''})
+    rate = get_current_usd_rate(market)
     variants = product.variants.filter(is_active=True).select_related('product').prefetch_related('attribute_values__attribute')
     data = []
     for v in variants:
@@ -824,23 +1239,33 @@ def get_product_variants_json(request, product_id):
         data.append({
             'id': v.id,
             'color': color,
-            'price': str(v.price),
+            'price': str(v.price * rate),  # so'm da
+            'price_usd': str(v.price),  # USD da
             'stock': v.stock_quantity,
             'sku': v.sku,
         })
-    return JsonResponse({'variants': data, 'product_name': product.name})
+    unit_display = product.get_unit_display()
+    return JsonResponse({
+        'variants': data,
+        'product_name': product.name,
+        'unit': product.unit,
+        'unit_display': unit_display,
+    })
 
 
+@require_market
 @csrf_exempt
 def search_customers_autocomplete(request):
     """Autocomplete uchun mijozlarni qidirish"""
+    market = get_request_market(request)
     query = request.GET.get('q', '').strip()
     
     if len(query) < 1:
         return JsonResponse({'customers': []})
     
     customers = Customer.objects.filter(
-        Q(name__icontains=query) | Q(phone__icontains=query)
+        Q(name__icontains=query) | Q(phone__icontains=query),
+        market=market
     ).order_by('name')[:10]  # Limit to 10 for autocomplete
     
     data = [{

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load store_tags %}
 
 {% block title %}Sotuv #{{ sale.id }} - Lustra & Lempala{% endblock %}
 
@@ -40,16 +41,16 @@
                                 <strong>{{ item.product.name }}</strong><br>
                                 <small class="text-muted">SKU: {{ item.product.sku }}</small>
                             </td>
-                            <td>{{ item.quantity }} dona</td>
-                            <td>{{ item.unit_price|floatformat:0 }} so'm</td>
-                            <td><strong>{{ item.subtotal|floatformat:0 }} so'm</strong></td>
+                            <td>{{ item.quantity }}{% if item.product.unit == 'metr' %} M{% else %} dona{% endif %}</td>
+                            <td>{{ item.unit_price|floatformat:0|comma_to_dot }} so'm</td>
+                            <td><strong>{{ item.subtotal|floatformat:0|comma_to_dot }} so'm</strong></td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     <tfoot class="table-dark">
                         <tr>
                             <th colspan="3">JAMI:</th>
-                            <th>{{ sale.total_amount|floatformat:0 }} so'm</th>
+                            <th>{{ sale.total_amount|floatformat:0|comma_to_dot }} so'm</th>
                         </tr>
                     </tfoot>
                 </table>

@@ -122,6 +122,8 @@
         background: #f9fafb;
         transition: all 0.2s;
         cursor: pointer;
+        max-width: 100%;
+        overflow: hidden;
     }
     
     .image-upload-area:hover {
@@ -154,9 +156,13 @@
     
     .image-preview {
         max-width: 100%;
-        max-height: 200px;
+        max-height: 280px;
+        width: auto;
+        height: auto;
+        object-fit: contain;
         border-radius: 8px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        display: block;
     }
     
     .profit-display {
@@ -337,6 +343,17 @@
             <!-- <span class="help-text">Bazadagi mavjud mahsulotlarni ko'rish uchun yozing</span> -->
         </div>
 
+        <!-- Parametrlar (5 tagacha: 1tali, dumaloq, kotta va h.k.) -->
+        <div class="form-group">
+            <label class="form-label">Parametrlar</label>
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnAddParametr">
+                    <i class="bi bi-plus-lg"></i> Parametr qo'shish
+                </button>
+            </div>
+            <div id="parametrContainer" class="d-flex flex-column gap-2"></div>
+        </div>
+
         <!-- Kategoriya -->
         <div class="form-group">
             <label class="form-label">
@@ -381,17 +398,24 @@
                 </select>
             </div>
             <div class="new-category-input">
-                <input type="text" class="form-control" id="new_color" name="new_color" 
-                       placeholder="Yangi rang nomini kiriting...">
+                <input type="text" class="form-control" id="new_color" name="new_color">
                 <!-- <span class="help-text">Agar rang ro'yxatda bo'lmasa, bu yerga yangi rang nomini kiriting</span> -->
             </div>
+        </div>
+
+        <!-- O'lchov birligi (faqat yangi mahsulot) -->
+        <div class="form-group" id="unitGroup">
+            <label for="unit" class="form-label">O'lchov birligi</label>
+            <select class="form-select" id="unit" name="unit">
+                <option value="dona">Dona</option>
+                <option value="metr">Metr</option>
+            </select>
         </div>
 
         <!-- SKU -->
         <div class="form-group">
             <label for="sku" class="form-label">KOD</label>
-            <input type="text" class="form-control" id="sku" name="sku" 
-                   placeholder="Avtomatik yaratiladi">
+            <input type="text" class="form-control" id="sku" name="sku">
             <!-- <span class="help-text">Agar bo'sh qoldirilsa, avtomatik yaratiladi</span> -->
         </div>
 
@@ -404,7 +428,7 @@
             </label>
             <div class="input-group">
                 <input type="number" class="form-control" id="cost_price" name="cost_price" 
-                       step="0.01" min="0.01" required placeholder="0.00">
+                       step="0.01" min="0.01" required>
                 <select class="form-select" id="cost_currency" name="cost_currency" style="max-width: 100px;">
                     <option value="USD">USD</option>
                     <option value="UZS">UZS</option>
@@ -420,7 +444,7 @@
             </label>
             <div class="input-group">
                 <input type="number" class="form-control" id="price" name="price" 
-                       step="0.01" min="0.01" required placeholder="0.00">
+                       step="0.01" min="0.01" required>
                 <select class="form-select" id="price_currency" name="price_currency" style="max-width: 100px;">
                     <option value="USD">USD</option>
                     <option value="UZS">UZS</option>
@@ -461,6 +485,8 @@
         
         <!-- Hidden field for existing product ID -->
         <input type="hidden" id="existing_product_id" name="existing_product_id" value="">
+        <!-- Hidden field for edit variant (o'zgartirish rejimida) -->
+        <input type="hidden" id="edit_variant_id" name="edit_variant_id" value="">
 
         <div class="section-divider"></div>
 
@@ -485,16 +511,25 @@
         <!-- Tavsif -->
         <div class="form-group">
             <label for="description" class="form-label">Mahsulot tavsifi</label>
-            <textarea class="form-control" id="description" name="description" 
-                      rows="4" placeholder="Mahsulot haqida batafsil ma'lumot kiriting..."></textarea>
+            <textarea class="form-control" id="description" name="description" rows="4"></textarea>
             <span class="help-text">Ixtiyoriy</span>
         </div>
 
         <!-- Submit buttons -->
         <div class="form-actions">
+            {% if initial_product.variant %}
+            <a href="{% url 'store:product_detail' initial_product.variant.id %}" class="btn-cancel">
+                <i class="bi bi-x-circle"></i> Bekor qilish
+            </a>
+            {% elif initial_product %}
+            <a href="{% url 'store:product_detail' initial_product.id %}" class="btn-cancel">
+                <i class="bi bi-x-circle"></i> Bekor qilish
+            </a>
+            {% else %}
             <a href="{% url 'store:product_list' %}" class="btn-cancel">
                 <i class="bi bi-x-circle"></i> Bekor qilish
             </a>
+            {% endif %}
             <button type="submit" class="btn-submit">
                 <i class="bi bi-check-circle-fill"></i> Mahsulotni Saqlash
             </button>
@@ -517,13 +552,11 @@
                     <label for="modalCategoryName" class="form-label">
                         Kategoriya nomi <span class="required">*</span>
                     </label>
-                    <input type="text" class="form-control" id="modalCategoryName" 
-                           placeholder="Masalan: Lustralar">
+                    <input type="text" class="form-control" id="modalCategoryName">
                 </div>
                 <div class="form-group">
                     <label for="modalCategoryDesc" class="form-label">Tavsif</label>
-                    <textarea class="form-control" id="modalCategoryDesc" rows="3" 
-                              placeholder="Kategoriya haqida qisqacha ma'lumot..."></textarea>
+                    <textarea class="form-control" id="modalCategoryDesc" rows="3"></textarea>
                 </div>
             </div>
             <div class="modal-footer" style="border-top: 2px solid #e5e7eb; padding: 20px;">
@@ -540,6 +573,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% if initial_product %}{{ initial_product|json_script:"initialProductData" }}{% endif %}
 <script>
     // Autocomplete for product name
     let autocompleteTimeout;
@@ -550,6 +584,39 @@
     const suggestionsContainer = document.getElementById('nameSuggestions');
     
     let autoSelectTimeout;
+    
+    // Parametr qo'shish (maks. 5 ta)
+    const MAX_PARAMETR = 5;
+    const parametrContainer = document.getElementById('parametrContainer');
+    const btnAddParametr = document.getElementById('btnAddParametr');
+    if (btnAddParametr && parametrContainer) {
+        btnAddParametr.addEventListener('click', function() {
+            const rows = parametrContainer.querySelectorAll('.parametr-row');
+            if (rows.length >= MAX_PARAMETR) return;
+            const row = document.createElement('div');
+            row.className = 'parametr-row d-flex align-items-center gap-2';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.name = 'parametr';
+            input.className = 'form-control flex-grow-1';
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn btn-outline-danger btn-sm py-0 px-1';
+            removeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+            removeBtn.title = 'O\'chirish';
+            removeBtn.addEventListener('click', function() {
+                row.remove();
+                btnAddParametr.disabled = false;
+            });
+            row.appendChild(input);
+            row.appendChild(removeBtn);
+            parametrContainer.appendChild(row);
+            if (parametrContainer.querySelectorAll('.parametr-row').length >= MAX_PARAMETR) {
+                btnAddParametr.disabled = true;
+            }
+            input.focus();
+        });
+    }
     
     nameInput.addEventListener('input', function() {
         const query = this.value.trim();
@@ -626,7 +693,7 @@
     });
     
     function searchProducts(query) {
-        fetch(`{% url 'store:search_products_autocomplete' %}?q=${encodeURIComponent(query)}`)
+        fetch(`{% url 'store:search_products_autocomplete' %}?q=${encodeURIComponent(query)}&include_out_of_stock=1`)
             .then(response => response.json())
             .then(data => {
                 suggestions = data.products || [];
@@ -647,15 +714,17 @@
             return;
         }
         
-        suggestionsContainer.innerHTML = products.map((product, index) => `
+        suggestionsContainer.innerHTML = products.map((product, index) => {
+            const stockLabel = (product.stock != null && Number(product.stock) <= 0) ? ' <span class="text-muted">(qolmagan)</span>' : '';
+            return `
             <div class="autocomplete-item" data-index="${index}" onclick="selectSuggestion(${JSON.stringify(product).replace(/"/g, '&quot;')})">
-                <div class="autocomplete-item-name">${highlightMatch(product.name, nameInput.value)}</div>
+                <div class="autocomplete-item-name">${highlightMatch(product.name, nameInput.value)}${stockLabel}</div>
                 <div class="autocomplete-item-details">
-                    SKU: ${product.sku} | ${parseFloat(product.price).toLocaleString()} so'm | ${product.category}
+                    SKU: ${product.sku} | ${formatSoomDot(parseFloat(product.price))} so'm | ${product.category}
                     ${product.description ? ' | ' + product.description.substring(0, 30) + (product.description.length > 30 ? '...' : '') : ''}
                 </div>
             </div>
-        `).join('');
+        `}).join('');
         
         suggestionsContainer.classList.add('show');
         selectedIndex = -1;
@@ -691,11 +760,11 @@
         const productId = product.product_id != null ? product.product_id : product.id;
         document.getElementById('existing_product_id').value = productId;
         
-        // Fill category (disable)
+        // Fill category (ochiq qoldiramiz)
         if (product.category_id) {
             document.getElementById('category').value = product.category_id;
-            document.getElementById('category').disabled = true;
-            document.getElementById('new_category').style.display = 'none';
+            document.getElementById('category').disabled = false;
+            document.getElementById('new_category').style.display = '';
             // Load colors for this category
             loadColorsByCategory(product.category_id);
         }
@@ -708,27 +777,28 @@
         document.getElementById('color').style.display = 'block';
         document.getElementById('new_color').style.display = 'block';
         
-        // Fill prices from first variant (for reference, but disabled)
-        const USD_RATE = 12500;
-        if (product.cost_price) {
-            const costPriceUZS = parseFloat(product.cost_price);
-            const costPriceUSD = costPriceUZS / USD_RATE;
-            document.getElementById('cost_price').value = costPriceUSD.toFixed(2);
-            document.getElementById('cost_currency').value = 'USD';
-        }
-        
-        if (product.price) {
-            const priceUZS = parseFloat(product.price);
-            const priceUSD = priceUZS / USD_RATE;
-            document.getElementById('price').value = priceUSD.toFixed(2);
-            document.getElementById('price_currency').value = 'USD';
-        }
-        
-        // Narx maydonlarini ochiq qoldirish — yangi variant uchun narx kiritish mumkin
+        // Narxlarni o'zi kiritadi — avtomatik to'ldirmaslik (0/bo'sh qoldiramiz)
+        document.getElementById('cost_price').value = '';
+        document.getElementById('cost_currency').value = 'USD';
+        document.getElementById('price').value = '';
+        document.getElementById('price_currency').value = 'USD';
         document.getElementById('cost_price').disabled = false;
         document.getElementById('cost_currency').disabled = false;
         document.getElementById('price').disabled = false;
         document.getElementById('price_currency').disabled = false;
+        
+        // Tanlangan mahsulotning o'lchov birligini ko'rsatish (ochiq qoldiramiz)
+        const unitSelect = document.getElementById('unit');
+        if (unitSelect && product.unit) {
+            unitSelect.value = product.unit;
+            unitSelect.disabled = false;
+        }
+        // Ombordagi miqdor / Qancha kelgan labelda mahsulot birligini ko'rsatish
+        const unitDisplay = (product.unit === 'metr') ? 'metr' : 'dona';
+        const stockLabel = document.querySelector('#stockQuantityGroup .form-label');
+        if (stockLabel) stockLabel.textContent = 'Ombordagi miqdor (' + unitDisplay + ') *';
+        const qtyReceivedLabel = document.querySelector('#quantityReceivedGroup .form-label');
+        if (qtyReceivedLabel) qtyReceivedLabel.innerHTML = 'Qancha kelgan (' + unitDisplay + ') <span class="required">*</span>';
         
         // Disable other inputs
         document.getElementById('description').disabled = true;
@@ -777,8 +847,13 @@
             .then(data => {
                 if (data.variants && data.variants.length > 0) {
                     group.style.display = 'block';
-                    listEl.innerHTML = '<table style="width:100%; border-collapse: collapse;"><thead><tr><th style="text-align:left; padding:6px 8px;">Rang</th><th style="text-align:left; padding:6px 8px;">Narx (so\'m)</th><th style="text-align:left; padding:6px 8px;">Qoldiq</th></tr></thead><tbody>' +
-                        data.variants.map(v => `<tr><td style="padding:6px 8px;">${v.color || '-'}</td><td style="padding:6px 8px;">${parseFloat(v.price).toLocaleString()}</td><td style="padding:6px 8px;">${v.stock} dona</td></tr>`).join('') +
+                    const unitLabel = (data.unit_display || 'dona').toLowerCase();
+                    listEl.innerHTML = '<table style="width:100%; border-collapse: collapse;"><thead><tr><th style="text-align:left; padding:6px 8px;">Rang</th><th style="text-align:left; padding:6px 8px;">Narx ($)</th><th style="text-align:left; padding:6px 8px;">Qoldiq</th></tr></thead><tbody>' +
+                        data.variants.map(v => {
+                            const qoldiq = (v.stock != null && Number(v.stock) <= 0) ? 'qolmagan' : (v.stock + ' ' + unitLabel);
+                            const priceUsd = (v.price_usd != null ? parseFloat(v.price_usd) : parseFloat(v.price)).toFixed(2);
+                            return `<tr><td style="padding:6px 8px;">${v.color || '-'}</td><td style="padding:6px 8px;">${priceUsd} $</td><td style="padding:6px 8px;">${qoldiq}</td></tr>`;
+                        }).join('') +
                         '</tbody></table>';
                 } else {
                     group.style.display = 'none';
@@ -801,9 +876,16 @@
         document.getElementById('cost_currency').disabled = false;
         document.getElementById('price').disabled = false;
         document.getElementById('price_currency').disabled = false;
+        const unitSelect = document.getElementById('unit');
+        if (unitSelect) unitSelect.value = 'dona';
         document.getElementById('description').disabled = false;
         document.getElementById('sku').disabled = false;
         document.getElementById('stock_quantity').disabled = false;
+        // Labelni donaga qaytarish
+        const stockLabel = document.querySelector('#stockQuantityGroup .form-label');
+        if (stockLabel) stockLabel.textContent = 'Ombordagi miqdor (dona) *';
+        const qtyReceivedLabel = document.querySelector('#quantityReceivedGroup .form-label');
+        if (qtyReceivedLabel) qtyReceivedLabel.innerHTML = 'Qancha kelgan (dona) <span class="required">*</span>';
         
         // Show all inputs
         document.getElementById('category').style.display = 'block';
@@ -814,6 +896,11 @@
         // Clear color inputs
         document.getElementById('color').value = '';
         document.getElementById('new_color').value = '';
+        
+        // Clear parametr rows
+        const parametrCont = document.getElementById('parametrContainer');
+        if (parametrCont) parametrCont.innerHTML = '';
+        if (btnAddParametr) btnAddParametr.disabled = false;
         
         // Show stock quantity input, hide quantity received
         document.getElementById('quantityReceivedGroup').style.display = 'none';
@@ -868,11 +955,17 @@
         return amount;
     }
     
+    function formatSoomDot(num) {
+        const n = Math.round(Number(num));
+        const s = String(n < 0 ? -n : n);
+        if (s.length <= 3) return (n < 0 ? '-' : '') + s;
+        return (n < 0 ? '-' : '') + s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
     function formatCurrency(amount, currency) {
         if (currency === 'USD') {
-            return amount.toLocaleString('uz-UZ', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' $';
+            return Number(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' $';
         }
-        return amount.toLocaleString('uz-UZ') + ' so\'m';
+        return formatSoomDot(amount) + ' so\'m';
     }
     
     // Calculate profit
@@ -1127,6 +1220,102 @@
         }
     });
     
+    // Pre-fill form when opened from product detail (O'zgartirish) — barcha maydonlar: nom, kategoriya, rang, narx, miqdor
+    (function() {
+        const el = document.getElementById('initialProductData');
+        if (!el) return;
+        try {
+            const ip = JSON.parse(el.textContent);
+            if (!ip || !ip.id) return;
+            nameInput.value = ip.name || '';
+            selectedProductName = ip.name || '';
+            document.getElementById('existing_product_id').value = String(ip.id);
+            const descEl = document.getElementById('description');
+            if (descEl && ip.description != null) descEl.value = ip.description || '';
+            if (ip.category_id) {
+                document.getElementById('category').value = ip.category_id;
+                document.getElementById('category').disabled = false;
+                const newCatWrap = document.getElementById('new_category');
+                if (newCatWrap && newCatWrap.closest('.new-category-input')) newCatWrap.closest('.new-category-input').style.display = '';
+                if (typeof loadColorsByCategory === 'function') loadColorsByCategory(ip.category_id);
+            }
+            if (typeof loadExistingVariants === 'function') loadExistingVariants(ip.id);
+            // Variant ma'lumotlari bo'lsa — rang, narx, tannarx, miqdor inputlariga qo'yamiz
+            if (ip.variant) {
+                const v = ip.variant;
+                document.getElementById('edit_variant_id').value = String(v.id);
+                // Rang: select yoki new_color
+                const colorSelect = document.getElementById('color');
+                const newColorInput = document.getElementById('new_color');
+                const colorVal = (v.color || '').trim();
+                if (colorVal) {
+                    const opt = Array.from(colorSelect.options).find(o => o.value && o.value.toLowerCase() === colorVal.toLowerCase());
+                    if (opt) {
+                        colorSelect.value = opt.value;
+                        if (newColorInput) newColorInput.value = '';
+                    } else {
+                        colorSelect.value = '';
+                        if (newColorInput) newColorInput.value = colorVal;
+                    }
+                }
+                // Narx $ da ko'rsatish (o'zgartirish rejimida)
+                const priceInput = document.getElementById('price');
+                const priceCurrency = document.getElementById('price_currency');
+                if (priceInput && (v.price_usd != null || v.price != null)) {
+                    const priceVal = v.price_usd != null ? v.price_usd : (v.price / 12500);
+                    priceInput.value = Number(priceVal).toFixed(2);
+                    if (priceCurrency) priceCurrency.value = 'USD';
+                }
+                // Tannarx $ da ko'rsatish
+                const costInput = document.getElementById('cost_price');
+                const costCurrency = document.getElementById('cost_currency');
+                if (costInput && (v.cost_price_usd != null || v.cost_price != null)) {
+                    const costVal = v.cost_price_usd != null ? v.cost_price_usd : (v.cost_price / 12500);
+                    costInput.value = Number(costVal).toFixed(2);
+                    if (costCurrency) costCurrency.value = 'USD';
+                }
+                // Miqdor (ombordagi)
+                const stockInput = document.getElementById('stock_quantity');
+                if (stockInput && v.stock_quantity != null) {
+                    stockInput.value = Math.max(0, Number(v.stock_quantity));
+                    stockInput.disabled = false;
+                    stockInput.required = true;
+                }
+                // Mavjud mahsulot uchun "Qancha kelgan" blokini yashirib, ombordagi miqdorni ko'rsatamiz
+                const qtyReceivedGroup = document.getElementById('quantityReceivedGroup');
+                if (qtyReceivedGroup) qtyReceivedGroup.style.display = 'none';
+                // Parametrlar (tahrir rejimida mavjud parametrlarni to'ldirish)
+                const parametrCont = document.getElementById('parametrContainer');
+                const arr = (v.parametrlar || []);
+                if (parametrCont && arr.length) {
+                    parametrCont.innerHTML = '';
+                    arr.slice(0, 5).forEach(function(val) {
+                        const row = document.createElement('div');
+                        row.className = 'parametr-row d-flex align-items-center gap-2';
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.name = 'parametr';
+                        input.className = 'form-control flex-grow-1';
+                        input.value = val;
+                        const removeBtn = document.createElement('button');
+                        removeBtn.type = 'button';
+                        removeBtn.className = 'btn btn-outline-danger btn-sm py-0 px-1';
+                        removeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+                        removeBtn.title = 'O\'chirish';
+                        removeBtn.addEventListener('click', function() {
+                            row.remove();
+                            if (btnAddParametr) btnAddParametr.disabled = false;
+                        });
+                        row.appendChild(input);
+                        row.appendChild(removeBtn);
+                        parametrCont.appendChild(row);
+                    });
+                    if (btnAddParametr) btnAddParametr.disabled = parametrCont.querySelectorAll('.parametr-row').length >= 5;
+                }
+            }
+        } catch (err) { console.warn('initial_product prefill:', err); }
+    })();
+
     // Form validation
     document.getElementById('productForm').addEventListener('submit', function(e) {
         const name = document.getElementById('name').value.trim();
