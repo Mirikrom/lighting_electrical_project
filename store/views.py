@@ -74,13 +74,15 @@ def login_view(request):
 
 
 def register_view(request):
-    """Ro'yxatdan o'tish: login, parol, ixtiyoriy market nomi"""
+    """Ro'yxatdan o'tish: login, parol, ixtiyoriy market nomi. Yangi user is_active=False — admin tasdiqlashi kerak."""
     if request.user.is_authenticated:
         return redirect(settings.LOGIN_REDIRECT_URL)
     if request.method == 'POST':
         form = RegisterForm(request.POST)
         if form.is_valid():
-            user = form.save()
+            user = form.save(commit=False)
+            user.is_active = False  # Admin paneldan active qilguncha tizimga kira olmaydi
+            user.save()
             market_name = (form.cleaned_data.get('market_name') or '').strip()
             market = None
             if market_name:
@@ -89,12 +91,12 @@ def register_view(request):
             if market:
                 profile.market = market
                 profile.save()
-            auth_login(request, user)
-            if market:
-                messages.success(request, f'Hisobingiz va "{market.name}" marketi yaratildi.')
-            else:
-                messages.info(request, 'Hisobingiz yaratildi. Admin sizni marketga biriktirguncha kuting.')
-            return redirect('store:no_market' if not market else settings.LOGIN_REDIRECT_URL)
+            # Log in qilmaymiz — admin tasdiqlagach login qiladi
+            messages.success(
+                request,
+                'Ro\'yxatdan o\'tdingiz. Admin hisobingizni tasdiqlagandan so\'ng tizimga kiring.'
+            )
+            return redirect('store:login')
         else:
             messages.error(request, 'Formani to\'g\'ri to\'ldiring.')
     else:

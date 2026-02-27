@@ -16,11 +16,14 @@ class UserProfileInline(admin.StackedInline):
     verbose_name = "Profili (market)"
     verbose_name_plural = "Market biriktirish"
     fk_name = 'user'
+    autocomplete_fields = ['market']
 
 
 class UserAdminWithProfile(BaseUserAdmin):
     inlines = [UserProfileInline]
-    list_display = BaseUserAdmin.list_display + ('get_market',)
+    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'is_active', 'get_market')
+    list_filter = ('is_staff', 'is_superuser', 'is_active')
+    list_editable = ['is_active']  # Ro'yxatdan tasdiqlash: Active belgisini qo'yish
 
     def get_market(self, obj):
         if hasattr(obj, 'profile') and obj.profile.market:
