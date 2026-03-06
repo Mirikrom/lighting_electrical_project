@@ -243,6 +243,26 @@ def product_detail(request, pk):
 
 
 @require_market
+@require_http_methods(["POST"])
+def upload_product_image(request, pk):
+    """Mahsulotga rasm yuklash (Product.image). Faqat shu market mahsuloti uchun."""
+    market = get_request_market(request)
+    product = get_object_or_404(Product, pk=pk, is_active=True, category__market=market)
+
+    image = request.FILES.get('image')
+    if not image:
+        return JsonResponse({'success': False, 'error': 'Rasm topilmadi.'}, status=400)
+
+    content_type = getattr(image, 'content_type', '') or ''
+    if not content_type.startswith('image/'):
+        return JsonResponse({'success': False, 'error': 'Faqat rasm fayl yuklash mumkin.'}, status=400)
+
+    product.image = image
+    product.save(update_fields=['image'])
+    return JsonResponse({'success': True, 'image_url': product.image.url})
+
+
+@require_market
 def delete_product(request, pk):
     """Mahsulotni o'chirish"""
     market = get_request_market(request)

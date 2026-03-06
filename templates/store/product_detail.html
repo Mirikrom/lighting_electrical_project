@@ -65,6 +65,25 @@
     font-weight: 500;
     padding: 0.25rem 0.5rem;
 }
+.image-placeholder-clickable {
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+    position: relative;
+}
+.image-placeholder-clickable:hover {
+    background: #e2e8f0 !important;
+    transform: translateY(-1px);
+}
+.image-placeholder-hint {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 12px;
+    color: #475569;
+}
 </style>
 {% endblock %}
 
@@ -77,11 +96,13 @@
         {% elif product.image %}
             <img src="{{ product.image.url }}" class="product-detail-image img-fluid rounded" alt="{{ product.name }}">
         {% else %}
-            <div class="d-flex align-items-center justify-content-center" style="height: 400px; border-radius: 12px; background: #f1f5f9;">
+            <div id="productImagePlaceholder" class="d-flex align-items-center justify-content-center image-placeholder-clickable" style="height: 400px; border-radius: 12px; background: #f1f5f9;" onclick="openImagePickModal()">
                 <i class="bi bi-image" style="font-size: 8rem; color: #cbd5e1;"></i>
+                <div class="image-placeholder-hint"><i class="bi bi-camera"></i> Rasm qo'shish</div>
             </div>
         {% endif %}
         </div>
+        <div id="productImageWrap" style="display:none;"></div>
     </div>
     <div class="col-md-6">
         <div class="product-detail-card">
@@ -175,5 +196,106 @@
         {% endif %}
     </div>
 </div>
+
+<!-- Image pick modal (Kamera / Galereya) -->
+<div id="imagePickModal" style="display:none; position:fixed; inset:0; background: rgba(0,0,0,0.5); z-index: 10000; align-items:center; justify-content:center;">
+    <div style="background:white; width: 92%; max-width: 420px; border-radius: 12px; padding: 18px 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap: 10px;">
+            <h5 style="margin:0; font-weight:800; color:#0f172a;"><i class="bi bi-camera"></i> Rasm tanlash</h5>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="closeImagePickModal()">Yopish</button>
+        </div>
+        <div style="margin-top: 14px; display:flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="triggerCamera()">Kamera</button>
+            <button type="button" class="btn btn-outline-primary" onclick="triggerGallery()">Galereya</button>
+        </div>
+        <div id="imageUploadStatus" style="margin-top: 12px; font-size: 13px; color:#64748b;"></div>
+    </div>
+</div>
+
+<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+<input type="file" id="galleryInput" accept="image/*" style="display:none;">
+
+<script>
+    function openImagePickModal() {
+        const modal = document.getElementById('imagePickModal');
+        if (modal) modal.style.display = 'flex';
+    }
+    function closeImagePickModal() {
+        const modal = document.getElementById('imagePickModal');
+        if (modal) modal.style.display = 'none';
+        const status = document.getElementById('imageUploadStatus');
+        if (status) status.textContent = '';
+    }
+    function triggerCamera() {
+        const el = document.getElementById('cameraInput');
+        if (el) el.click();
+    }
+    function triggerGallery() {
+        const el = document.getElementById('galleryInput');
+        if (el) el.click();
+    }
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    async function uploadProductImage(file) {
+        const status = document.getElementById('imageUploadStatus');
+        if (!file) return;
+        if (status) status.textContent = 'Yuklanmoqda...';
+        try {
+            const fd = new FormData();
+            fd.append('image', file);
+            const res = await fetch('{% url "store:upload_product_image" product.id %}', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                body: fd
+            });
+            const data = await res.json();
+            if (!data.success) {
+                if (status) status.textContent = data.error || 'Xatolik';
+                return;
+            }
+
+            // Placeholder o'rniga rasm chiqazamiz
+            const placeholder = document.getElementById('productImagePlaceholder');
+            if (placeholder) {
+                placeholder.outerHTML = `<img src="${data.image_url}" class="product-detail-image img-fluid rounded" alt="{{ product.name }}">`;
+            } else {
+                // fallback: reload
+                window.location.reload();
+            }
+            if (status) status.textContent = 'Saqlandi.';
+            setTimeout(closeImagePickModal, 350);
+        } catch (e) {
+            if (status) status.textContent = 'Xatolik: rasm yuklanmadi.';
+        }
+    }
+
+    document.addEventListener('change', function(e) {
+        if (!e.target) return;
+        if (e.target.id === 'cameraInput' || e.target.id === 'galleryInput') {
+            const file = e.target.files && e.target.files[0];
+            // reset input so user can pick same file again
+            e.target.value = '';
+            uploadProductImage(file);
+        }
+    });
+
+    // close on outside click
+    document.addEventListener('click', function(e) {
+        const modal = document.getElementById('imagePickModal');
+        if (modal && e.target === modal) closeImagePickModal();
+    });
+</script>
 {% endblock %}
 
