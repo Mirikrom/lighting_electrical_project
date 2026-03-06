@@ -1139,6 +1139,11 @@
 
             <div class="action-buttons" id="actionButtonsContainer">
                 <h3>Amallar</h3>
+                {% if append_sale_id %}
+                <div class="alert alert-info mb-2" style="font-size: 13px; padding: 6px 10px;">
+                    Mavjud sotuvga (ID: {{ append_sale_id }}) yangi mahsulotlar qo'shayapsiz.
+                </div>
+                {% endif %}
                 <button class="action-btn finalize" onclick="finalizeOrder()">Buyurtmani yakunlash</button>
             </div>
         </div>
@@ -1180,6 +1185,47 @@
     </div>
 </div>
 
+<!-- Mixed Payment Modal -->
+<div id="mixedPaymentModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 24px; border-radius: 10px; max-width: 520px; width: 92%; position: relative;">
+        <h3 style="margin-top: 0; margin-bottom: 10px;">Aralash to'lov</h3>
+        <div style="color: #64748b; font-size: 13px; margin-bottom: 16px;">
+            Jami: <strong id="mixedTotalUsdLabel">$0.00</strong> / <strong id="mixedTotalUzsLabel">0 so'm</strong>
+        </div>
+        <div style="display:flex; gap: 10px; align-items:center; flex-wrap: wrap; margin-bottom: 12px;">
+            <div style="font-weight: 700; font-size: 13px; color:#334155;">Kiritish:</div>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size: 13px;">
+                <input type="radio" name="mixedInputCurrency" id="mixedInputUsd" value="usd" checked>
+                $
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size: 13px;">
+                <input type="radio" name="mixedInputCurrency" id="mixedInputUzs" value="uzs">
+                so'm
+            </label>
+        </div>
+        <div class="row g-2">
+            <div class="col-md-6">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Naqd</label>
+                <input type="number" id="mixedCashInput" min="0" step="0.01" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                <div style="margin-top: 6px; font-size: 12px; color: #64748b;">$ <span id="mixedCashUsdLabel">0.00</span> / <span id="mixedCashUzsLabel">0 so'm</span></div>
+            </div>
+            <div class="col-md-6">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Karta</label>
+                <input type="number" id="mixedCardInput" min="0" step="0.01" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; background:#f8fafc;" disabled>
+                <div style="margin-top: 6px; font-size: 12px; color: #64748b;">$ <span id="mixedCardUsdLabel">0.00</span> / <span id="mixedCardUzsLabel">0 so'm</span></div>
+            </div>
+        </div>
+        <div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px;">
+            <button type="button" onclick="setMixedAllCash()" style="padding: 8px 12px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; font-weight: 600;">Hammasi naqd</button>
+            <button type="button" onclick="setMixedAllCard()" style="padding: 8px 12px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; font-weight: 600;">Hammasi karta</button>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px;">
+            <button type="button" onclick="closeMixedPaymentModal()" style="padding: 10px 18px; background: #e5e7eb; border: none; border-radius: 8px; cursor: pointer;">Bekor qilish</button>
+            <button type="button" onclick="confirmMixedPayment()" style="padding: 10px 18px; background: #16a34a; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700;">Tasdiqlash</button>
+        </div>
+    </div>
+</div>
+
 <!-- Chiroyli alert modal (qolmagan, savat bo'sh, sotuv natija) -->
 <div id="appAlertOverlay" class="no-print">
     <div class="app-alert-box" id="appAlertBox">
@@ -1206,7 +1252,11 @@
 {% block extra_js %}
 <script>
     let cart = [];
+    const APPEND_SALE_ID = parseInt('{{ append_sale_id|default:"" }}', 10) || null;
+    const EDIT_SALE_ID = parseInt('{{ edit_sale_id|default:"" }}', 10) || null;
     let selectedPaymentMethod = 'cash';
+    let mixedPayment = { cash_usd: 0, card_usd: 0, cash_uzs: 0, card_uzs: 0, is_set: false, input_currency: 'usd' };
+    let mixedModalCurrency = 'usd';
     let discount = 0;
     let searchAutocompleteTimeout;
     let searchSelectedIndex = -1;
@@ -1261,6 +1311,17 @@
         topProducts = [];
     }
     {% endif %}
+
+    // Edit sale: mavjud sotuvdan korzinkani to'ldirish
+    let editSaleItems = [];
+    {% if edit_sale_items_json %}
+    try {
+        editSaleItems = JSON.parse('{{ edit_sale_items_json|escapejs }}');
+    } catch (e) {
+        console.error('Error parsing edit sale items:', e);
+        editSaleItems = [];
+    }
+    {% endif %}
     
     console.log('Top products loaded:', topProducts);
 
@@ -1276,6 +1337,21 @@
             }
         }
     })();
+
+    // Agar tahrirlash rejimida bo'lsak, mavjud sotuvdagi mahsulotlarni korzinkaga yuklaymiz
+    if (EDIT_SALE_ID && editSaleItems.length > 0) {
+        cart = editSaleItems.map(function(item) {
+            return {
+                product_id: item.product_id,
+                name: item.name,
+                price: parseFloat(item.price) || 0,
+                quantity: parseInt(item.quantity, 10) || 1,
+                stock: parseInt(item.stock, 10) || 0,
+                unit: item.unit || 'dona'
+            };
+        });
+        updateOrderTable();
+    }
     
     productSearchInput.addEventListener('input', function() {
         const query = this.value.trim();
@@ -1964,6 +2040,200 @@
         });
         document.querySelector(`[data-method="${method}"]`).classList.add('active');
         document.getElementById('paymentMethod').value = method;
+
+        if (method === 'mixed') {
+            // savat bo'sh bo'lsa: faqat tanlaymiz, modalni yakunlashda chiqaramiz
+            if (cart.length > 0) {
+                openMixedPaymentModal();
+            }
+        } else {
+            mixedPayment.is_set = false;
+        }
+    }
+
+    function getTotalUSDValue() {
+        let totalUSD = 0;
+        cart.forEach(item => { totalUSD += (Number(item.price) || 0) * (Number(item.quantity) || 0); });
+        return totalUSD;
+    }
+    function getUsdRateValue() {
+        return parseFloat(document.getElementById('usdRate')?.value) || 12500;
+    }
+    function getMixedCurrencyMode() {
+        const usd = document.getElementById('mixedInputUsd');
+        const uzs = document.getElementById('mixedInputUzs');
+        if (usd && usd.checked) return 'usd';
+        if (uzs && uzs.checked) return 'uzs';
+        return 'usd';
+    }
+    function setMixedCurrencyMode(mode) {
+        const usd = document.getElementById('mixedInputUsd');
+        const uzs = document.getElementById('mixedInputUzs');
+        if (mode === 'uzs') { if (uzs) uzs.checked = true; }
+        else { if (usd) usd.checked = true; }
+    }
+    function openMixedPaymentModal() {
+        const modal = document.getElementById('mixedPaymentModal');
+        if (!modal) return;
+        const usdRate = getUsdRateValue();
+        const totalUSD = getTotalUSDValue();
+        const totalUZS = Math.round(totalUSD * usdRate);
+        document.getElementById('mixedTotalUsdLabel').textContent = '$' + totalUSD.toFixed(2);
+        document.getElementById('mixedTotalUzsLabel').textContent = formatSoomDot(totalUZS) + " so'm";
+
+        const cashEl = document.getElementById('mixedCashInput');
+        const cardEl = document.getElementById('mixedCardInput');
+        if (!cashEl || !cardEl) return;
+
+        // prefill: agar oldin kiritilgan bo'lsa o'shani, bo'lmasa naqd=0 (default $)
+        if (mixedPayment.is_set) {
+            setMixedCurrencyMode(mixedPayment.input_currency || 'usd');
+            mixedModalCurrency = getMixedCurrencyMode();
+            if (getMixedCurrencyMode() === 'uzs') {
+                cashEl.step = '1';
+                cashEl.value = String(Math.round(mixedPayment.cash_uzs || 0));
+            } else {
+                cashEl.step = '0.01';
+                cashEl.value = (Number(mixedPayment.cash_usd) || 0).toFixed(2);
+            }
+        } else {
+            setMixedCurrencyMode('usd');
+            mixedModalCurrency = 'usd';
+            cashEl.step = '0.01';
+            cashEl.value = '0.00';
+        }
+
+        updateMixedFromCash();
+        modal.style.display = 'flex';
+        setTimeout(() => cashEl && cashEl.focus(), 50);
+    }
+    function closeMixedPaymentModal() {
+        const modal = document.getElementById('mixedPaymentModal');
+        if (modal) modal.style.display = 'none';
+    }
+    function updateMixedFromCash() {
+        const usdRate = getUsdRateValue();
+        const totalUSD = getTotalUSDValue();
+        const totalUZS = Math.round(totalUSD * usdRate);
+        const mode = getMixedCurrencyMode();
+
+        const cashEl = document.getElementById('mixedCashInput');
+        const cardEl = document.getElementById('mixedCardInput');
+        if (!cashEl || !cardEl) return;
+
+        let cashUsd = 0;
+        let cashUzs = 0;
+        if (mode === 'uzs') {
+            cashEl.step = '1';
+            cashUzs = Math.max(0, Math.round(parseFloat(cashEl.value || '0') || 0));
+            cashUsd = Math.round((cashUzs / usdRate) * 100) / 100;
+        } else {
+            cashEl.step = '0.01';
+            cashUsd = Math.max(0, Math.round((parseFloat(cashEl.value || '0') || 0) * 100) / 100);
+            cashUzs = Math.round(cashUsd * usdRate);
+        }
+
+        // cash jami dan oshmasin
+        if (cashUsd > totalUSD) {
+            cashUsd = Math.round(totalUSD * 100) / 100;
+            cashUzs = Math.round(cashUsd * usdRate);
+            cashEl.value = (mode === 'uzs') ? String(cashUzs) : cashUsd.toFixed(2);
+        }
+
+        const cardUsd = Math.max(0, Math.round((totalUSD - cashUsd) * 100) / 100);
+        const cardUzs = Math.max(0, totalUZS - cashUzs);
+
+        cardEl.value = (mode === 'uzs') ? String(cardUzs) : cardUsd.toFixed(2);
+
+        document.getElementById('mixedCashUsdLabel').textContent = cashUsd.toFixed(2);
+        document.getElementById('mixedCashUzsLabel').textContent = formatSoomDot(cashUzs) + " so'm";
+        document.getElementById('mixedCardUsdLabel').textContent = cardUsd.toFixed(2);
+        document.getElementById('mixedCardUzsLabel').textContent = formatSoomDot(cardUzs) + " so'm";
+    }
+    function setMixedAllCash() {
+        const usdRate = getUsdRateValue();
+        const totalUSD = getTotalUSDValue();
+        const totalUZS = Math.round(totalUSD * usdRate);
+        const mode = getMixedCurrencyMode();
+        const cashEl = document.getElementById('mixedCashInput');
+        if (!cashEl) return;
+        cashEl.value = (mode === 'uzs') ? String(totalUZS) : totalUSD.toFixed(2);
+        updateMixedFromCash();
+    }
+    function setMixedAllCard() {
+        const usdRate = getUsdRateValue();
+        const mode = getMixedCurrencyMode();
+        const cashEl = document.getElementById('mixedCashInput');
+        if (!cashEl) return;
+        cashEl.value = (mode === 'uzs') ? '0' : '0.00';
+        updateMixedFromCash();
+    }
+    document.addEventListener('input', function(e) {
+        if (e.target && (e.target.id === 'mixedCashInput')) {
+            updateMixedFromCash();
+        }
+    });
+    document.addEventListener('change', function(e) {
+        if (!e.target || e.target.name !== 'mixedInputCurrency') return;
+        const usdRate = getUsdRateValue();
+        const cashEl = document.getElementById('mixedCashInput');
+        if (!cashEl) return;
+        const newMode = getMixedCurrencyMode();
+        if (newMode === mixedModalCurrency) {
+            updateMixedFromCash();
+            return;
+        }
+        // old mode -> USD
+        let cashUsd = 0;
+        if (mixedModalCurrency === 'uzs') {
+            const cashUzs = Math.max(0, Math.round(parseFloat(cashEl.value || '0') || 0));
+            cashUsd = Math.round((cashUzs / usdRate) * 100) / 100;
+        } else {
+            cashUsd = Math.max(0, Math.round((parseFloat(cashEl.value || '0') || 0) * 100) / 100);
+        }
+        // USD -> new mode
+        if (newMode === 'uzs') {
+            cashEl.step = '1';
+            cashEl.value = String(Math.round(cashUsd * usdRate));
+        } else {
+            cashEl.step = '0.01';
+            cashEl.value = cashUsd.toFixed(2);
+        }
+        mixedModalCurrency = newMode;
+        updateMixedFromCash();
+    });
+    function confirmMixedPayment() {
+        const usdRate = getUsdRateValue();
+        const totalUSD = getTotalUSDValue();
+        const totalUZS = Math.round(totalUSD * usdRate);
+        const mode = getMixedCurrencyMode();
+        const cashEl = document.getElementById('mixedCashInput');
+        if (!cashEl) return;
+        let cashUsd = 0;
+        let cashUzs = 0;
+        if (mode === 'uzs') {
+            cashUzs = Math.max(0, Math.round(parseFloat(cashEl.value || '0') || 0));
+            cashUsd = Math.round((cashUzs / usdRate) * 100) / 100;
+        } else {
+            cashUsd = Math.max(0, Math.round((parseFloat(cashEl.value || '0') || 0) * 100) / 100);
+            cashUzs = Math.round(cashUsd * usdRate);
+        }
+        if (cashUsd > totalUSD) {
+            showAppAlert('Aralash to\'lov', 'Naqd jami summadan oshib ketdi.', 'warning');
+            return;
+        }
+
+        const cardUsd = Math.max(0, Math.round((totalUSD - cashUsd) * 100) / 100);
+        const cardUzs = Math.max(0, totalUZS - cashUzs);
+        mixedPayment = {
+            cash_usd: cashUsd,
+            card_usd: cardUsd,
+            cash_uzs: cashUzs,
+            card_uzs: cardUzs,
+            is_set: true,
+            input_currency: mode
+        };
+        closeMixedPaymentModal();
     }
     
     function applyDiscount() {
@@ -2056,6 +2326,14 @@
     }
     
     function showCustomerModal() {
+        if (EDIT_SALE_ID) {
+            // Tahrirlash rejimida mijoz allaqachon ma'lum — modal ochilmaydi
+            proceedWithOrder('', '').catch(function(err) {
+                console.error('Sotuv yuborishda xatolik (edit mode):', err);
+                showAppAlert('Xatolik', err && err.message ? err.message : String(err), 'error');
+            });
+            return;
+        }
         const modal = document.getElementById('customerModal');
         if (modal) modal.style.display = 'flex';
         if (customerNameInput) customerNameInput.value = '';
@@ -2099,25 +2377,28 @@
             showAppAlert('Savat bo\'sh', 'Savat bo\'sh! Avval mahsulot qo\'shing.', 'warning');
             return;
         }
-        
+        if (selectedPaymentMethod === 'mixed' && !mixedPayment.is_set) {
+            openMixedPaymentModal();
+            return;
+        }
         showCustomerModal();
     }
     
     async function proceedWithOrder(customerName, customerPhone) {
         const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
+        const totalUSD = getTotalUSDValue();
         const data = {
             customer_name: customerName,
             customer_phone: customerPhone,
             payment_method: selectedPaymentMethod,
             usd_rate: usdRate,
-            items: cart.map(item => {
-                const priceSoom = Math.round(item.price * usdRate * 100) / 100;
-                return {
-                    product_id: item.product_id,
-                    quantity: item.quantity,
-                    price: priceSoom
-                };
-            })
+            payment_cash_usd: selectedPaymentMethod === 'mixed' ? mixedPayment.cash_usd : (selectedPaymentMethod === 'cash' ? totalUSD : 0),
+            payment_card_usd: selectedPaymentMethod === 'mixed' ? mixedPayment.card_usd : (selectedPaymentMethod === 'card' ? totalUSD : 0),
+            items: cart.map(item => ({
+                product_id: item.product_id,
+                quantity: item.quantity,
+                price: item.price
+            }))
         };
         
         try {
@@ -2137,8 +2418,17 @@
             }
             
             const csrftoken = getCookie('csrftoken');
-            
-            const response = await fetch('{% url "store:create_sale" %}', {
+
+            const isAppendMode = APPEND_SALE_ID !== null && APPEND_SALE_ID !== undefined;
+            const isEditMode = EDIT_SALE_ID !== null && EDIT_SALE_ID !== undefined;
+            let url = '{% url "store:create_sale" %}';
+            if (isAppendMode) {
+                url = '/sales/' + APPEND_SALE_ID + '/append/';
+            } else if (isEditMode) {
+                url = '/sales/' + EDIT_SALE_ID + '/edit/';
+            }
+
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2153,8 +2443,20 @@
                 cart = [];
                 discount = 0;
                 updateOrderTable();
-                showAppAlert('Muvaffaqiyat', 'Sotuv muvaffaqiyatli yaratildi!', 'success', function() {
-                    window.location.href = '/sales/' + result.sale_id + '/receipt/';
+                let successText;
+                let redirectUrl;
+                if (isAppendMode) {
+                    successText = 'Mahsulotlar mavjud sotuvga qo\'shildi.';
+                    redirectUrl = '/sales/' + (APPEND_SALE_ID || result.sale_id) + '/';
+                } else if (isEditMode) {
+                    successText = 'Sotuv muvaffaqiyatli tahrirlandi.';
+                    redirectUrl = '/sales/' + (EDIT_SALE_ID || result.sale_id) + '/';
+                } else {
+                    successText = 'Sotuv muvaffaqiyatli yaratildi!';
+                    redirectUrl = '/sales/' + result.sale_id + '/receipt/';
+                }
+                showAppAlert('Muvaffaqiyat', successText, 'success', function() {
+                    window.location.href = redirectUrl;
                 });
             } else {
                 var msg = result.error || 'Noma\'lum xatolik';

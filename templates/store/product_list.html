@@ -522,5 +522,7 @@
         </div>
         {% endif %}
     </div>
+
+    {% include 'store/_pagination.html' with page_obj=page_obj query_string=query_string %}
 </div>
 {% endblock %}

@@ -44,22 +44,6 @@
     </form>
 </div>
 
-<!-- Summary -->
-<div class="card mb-4" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white;">
-    <div class="card-body">
-        <div class="row text-center">
-            <div class="col-md-6">
-                <h5>Jami qarzlar</h5>
-                <h2>{{ credits|length }}</h2>
-            </div>
-            <div class="col-md-6">
-                <h5>Jami qarz summasi</h5>
-                <h2>{{ total_debt|floatformat:0|comma_to_dot }} so'm</h2>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Customer Debts Summary -->
 {% if customer_debts %}
 <div class="card mb-4">
@@ -81,7 +65,7 @@
                     <tr>
                         <td><strong>{{ debt.customer__name|default:"Noma'lum" }}</strong></td>
                         <td>{{ debt.customer__phone|default:"-" }}</td>
-                        <td><strong class="text-danger">{{ debt.total_debt|floatformat:0|comma_to_dot }} so'm</strong></td>
+                        <td><strong class="text-danger">${{ debt.total_debt|floatformat:2|comma_to_dot }}</strong> <small>({{ debt.total_debt|multiply:current_usd_rate|floatformat:0|intdot }} so'm)</small></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -119,7 +103,7 @@
                     {% endif %}
                 </td>
                 <td>{{ credit.sale_date|date:"d.m.Y H:i" }}</td>
-                <td><strong class="text-danger">{{ credit.total_amount|floatformat:0|comma_to_dot }} so'm</strong></td>
+                <td><strong class="text-danger">${{ credit.total_amount|floatformat:2|comma_to_dot }}</strong> <small>({% with r=credit.usd_rate|default:current_usd_rate %}{{ credit.total_amount|multiply:r|floatformat:0|intdot }}{% endwith %} so'm)</small></td>
                 <td>{{ credit.created_by.username|default:"-" }}</td>
                 <td>
                     <a href="{% url 'store:sale_detail' credit.pk %}" class="btn btn-sm btn-primary">
@@ -142,4 +126,6 @@
         </tbody>
     </table>
 </div>
+
+{% include 'store/_pagination.html' with page_obj=page_obj query_string=query_string %}
 {% endblock %}

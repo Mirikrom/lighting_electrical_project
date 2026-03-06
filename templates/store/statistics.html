@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% load store_tags %}
+
+{% block title %}Statistika - Lustra & Lempala{% endblock %}
+
+{% block content %}
+<h1 class="display-5 fw-bold mb-4">
+    <i class="bi bi-graph-up"></i> Statistika
+</h1>
+
+<div class="filter-section mb-4">
+    <form method="get" class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label">Sana (kun bo'yicha)</label>
+            <input type="date" name="date" class="form-control" value="{{ date }}">
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">&nbsp;</label>
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-funnel"></i> Ko'rish
+            </button>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">&nbsp;</label>
+            <a href="{% url 'store:statistics' %}" class="btn btn-outline-secondary w-100">
+                <i class="bi bi-arrow-clockwise"></i> Hammasi
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <strong>Sotuvlar summasi {% if date %}({{ date }}){% else %}(hammasi){% endif %}</strong>
+            </div>
+            <div class="card-body">
+                <div style="font-size: 28px; font-weight: 800; color: #111827;">
+                    ${{ total_sales_usd|floatformat:2|comma_to_dot }}
+                </div>
+                <div class="text-muted" style="margin-top: 6px; font-weight: 600;">
+                    {{ total_sales_uzs|floatformat:0|intdot }} so'm
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header bg-warning">
+                <strong>Qarzdorlar summasi {% if date %}({{ date }}){% else %}(hammasi){% endif %}</strong>
+            </div>
+            <div class="card-body">
+                <div style="font-size: 28px; font-weight: 800; color: #991b1b;">
+                    ${{ total_credit_usd|floatformat:2|comma_to_dot }}
+                </div>
+                <div class="text-muted" style="margin-top: 6px; font-weight: 600;">
+                    {{ total_credit_uzs|floatformat:0|intdot }} so'm
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

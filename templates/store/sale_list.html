@@ -25,7 +25,7 @@
                 <option value="">Barchasi</option>
                 <option value="cash" {% if request.GET.payment_method == 'cash' %}selected{% endif %}>Naqd pul</option>
                 <option value="card" {% if request.GET.payment_method == 'card' %}selected{% endif %}>Karta</option>
-                <option value="transfer" {% if request.GET.payment_method == 'transfer' %}selected{% endif %}>O'tkazma</option>
+                <option value="mixed" {% if request.GET.payment_method == 'mixed' %}selected{% endif %}>Aralash</option>
             </select>
         </div>
         <div class="col-md-3">
@@ -42,22 +42,6 @@
     </form>
 </div>
 
-<!-- Summary -->
-<div class="card mb-4" style="background: linear-gradient(135deg, #10b981, #059669); color: white;">
-    <div class="card-body">
-        <div class="row text-center">
-            <div class="col-md-6">
-                <h5>Jami sotuvlar</h5>
-                <h2>{{ sales|length }}</h2>
-            </div>
-            <div class="col-md-6">
-                <h5>Jami summa</h5>
-                <h2>{{ total_sales|floatformat:0|comma_to_dot }} so'm</h2>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Sales Table -->
 <div class="table-responsive">
     <table class="table table-hover">
@@ -66,6 +50,7 @@
                 <th>ID</th>
                 <th>Mijoz</th>
                 <th>Sana</th>
+                <th>Holati</th>
                 <th>Summa</th>
                 <th>To'lov</th>
                 <th>Yaratgan</th>
@@ -87,16 +72,27 @@
                     {% endif %}
                 </td>
                 <td>{{ sale.sale_date|date:"d.m.Y H:i" }}</td>
-                <td><strong class="text-success">{{ sale.total_amount|floatformat:0|comma_to_dot }} so'm</strong></td>
+                <td>
+                    {% if sale.status == 'completed' %}
+                        <span class="badge bg-success">Yakunlangan</span>
+                    {% elif sale.status == 'returned' %}
+                        <span class="badge bg-warning text-dark">Qaytarilgan</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Noma'lum</span>
+                    {% endif %}
+                </td>
+                <td><strong class="text-success">${{ sale.total_amount|floatformat:2|comma_to_dot }}</strong> <small class="text-muted">({% with r=sale.usd_rate|default:current_usd_rate %}{{ sale.total_amount|multiply:r|floatformat:0|intdot }}{% endwith %} so'm)</small></td>
                 <td>
                     {% if sale.payment_method == 'cash' %}
                         <span class="badge bg-success">Naqd</span>
                     {% elif sale.payment_method == 'card' %}
                         <span class="badge bg-primary">Karta</span>
+                    {% elif sale.payment_method == 'mixed' %}
+                        <span class="badge bg-warning text-dark">Aralash</span>
                     {% elif sale.payment_method == 'credit' %}
                         <span class="badge bg-danger">Qarzga</span>
                     {% else %}
-                        <span class="badge bg-info">O'tkazma</span>
+                        <span class="badge bg-secondary">-</span>
                     {% endif %}
                 </td>
                 <td>{{ sale.created_by.username|default:"-" }}</td>
@@ -111,7 +107,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="7" class="text-center">
+                <td colspan="8" class="text-center">
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i> Hech qanday sotuv topilmadi.
                     </div>
@@ -121,5 +117,7 @@
         </tbody>
     </table>
 </div>
+
+{% include 'store/_pagination.html' with page_obj=page_obj query_string=query_string %}
 {% endblock %}
 

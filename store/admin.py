@@ -122,7 +122,7 @@ class SaleItemInline(admin.TabularInline):
 
 @admin.register(Sale)
 class SaleAdmin(admin.ModelAdmin):
-    list_display = ['id', 'market', 'customer', 'sale_date', 'total_amount', 'payment_method', 'created_by']
+    list_display = ['id', 'market', 'customer', 'sale_date', 'total_amount', 'payment_method', 'payment_cash_amount', 'payment_card_amount', 'created_by']
     list_filter = ['market', 'sale_date', 'payment_method']
     search_fields = ['customer__name', 'customer__phone']
     readonly_fields = ['sale_date', 'total_amount']
@@ -132,7 +132,7 @@ class SaleAdmin(admin.ModelAdmin):
             'fields': ('customer',)
         }),
         ('Sotuv ma\'lumotlari', {
-            'fields': ('sale_date', 'total_amount', 'payment_method', 'notes', 'created_by')
+            'fields': ('sale_date', 'total_amount', 'payment_method', 'payment_cash_amount', 'payment_card_amount', 'notes', 'created_by')
         }),
     )
 

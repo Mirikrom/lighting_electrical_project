@@ -225,21 +225,29 @@ class Customer(models.Model):
 
 
 class Sale(models.Model):
+    STATUS_CHOICES = [
+        ('completed', "Yakunlangan"),
+        ('returned', "Qaytarilgan"),
+    ]
     PAYMENT_METHODS = [
         ('cash', 'Naqd pul'),
         ('card', 'Karta'),
         ('transfer', 'O\'tkazma'),
+        ('mixed', 'Aralash (Naqd + Karta)'),
         ('credit', 'Qarzga'),
     ]
 
     market = models.ForeignKey(Market, on_delete=models.CASCADE, null=True, blank=True, related_name='sales', verbose_name="Market")
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Mijoz")
     sale_date = models.DateTimeField(auto_now_add=True, verbose_name="Sotish sanasi")
-    total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Jami summa")
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Jami summa (USD)")
     usd_rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="Dollar kursi (so'm)")
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='cash', verbose_name="To'lov usuli")
+    payment_cash_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Naqd (USD)")
+    payment_card_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Karta (USD)")
     notes = models.TextField(blank=True, verbose_name="Izohlar")
     created_by = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, verbose_name="Yaratgan")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='completed', verbose_name="Holati")
 
     class Meta:
         verbose_name = "Sotuv"
@@ -247,11 +255,11 @@ class Sale(models.Model):
         ordering = ['-sale_date']
 
     def __str__(self):
-        return f"Sotuv #{self.id} - {self.total_amount} so'm"
+        return f"Sotuv #{self.id} - ${self.total_amount}"
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        logger.info(f"Sale created: {self.id}, Total: {self.total_amount} so'm")
+        logger.info(f"Sale created: {self.id}, Total: ${self.total_amount}")
 
 
 class SaleItem(models.Model):
@@ -260,8 +268,8 @@ class SaleItem(models.Model):
     # Backward compatibility - eski Product uchun
     product_old = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Mahsulot (eski)", related_name='old_sale_items')
     quantity = models.IntegerField(validators=[MinValueValidator(1)], verbose_name="Miqdor")
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Birlik narxi")
-    subtotal = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Jami")
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Birlik narxi (USD)")
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Jami (USD)")
 
     class Meta:
         verbose_name = "Sotuv elementi"
@@ -280,16 +288,3 @@ class SaleItem(models.Model):
     def save(self, *args, **kwargs):
         self.subtotal = self.unit_price * self.quantity
         super().save(*args, **kwargs)
-        # Update sale total
-        self.sale.total_amount = sum(item.subtotal for item in self.sale.items.all())
-        self.sale.save()
-        # Update variant stock
-        if self.variant:
-            self.variant.stock_quantity -= self.quantity
-            self.variant.save()
-            logger.info(f"SaleItem added: {self.variant} x {self.quantity}")
-        elif self.product_old:
-            # Backward compatibility
-            self.product_old.stock_quantity -= self.quantity
-            self.product_old.save()
-            logger.info(f"SaleItem added (old): {self.product_old.name} x {self.quantity}")

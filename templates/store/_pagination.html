@@ -1,0 +1,77 @@
+{% comment %}
+Pagination: page_obj (Django Page), request.GET dan filtr parametrlarini saqlab qoladi.
+Loyiha stillari: gradient, border-radius, primary/secondary ranglar.
+{% endcomment %}
+{% if page_obj and page_obj.paginator.num_pages > 1 %}
+<div class="store-pagination-wrapper mt-4 mb-3">
+    <nav class="store-pagination" aria-label="Sahifa navigatsiyasi">
+        <ul class="pagination pagination-lg justify-content-center mb-0 flex-wrap">
+            {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link store-page-link" href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page=1" aria-label="Birinchi">
+                        <i class="bi bi-chevron-double-left"></i>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link store-page-link" href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.previous_page_number }}" aria-label="Oldingi">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                </li>
+            {% else %}
+                <li class="page-item disabled"><span class="page-link store-page-link"><i class="bi bi-chevron-double-left"></i></span></li>
+                <li class="page-item disabled"><span class="page-link store-page-link"><i class="bi bi-chevron-left"></i></span></li>
+            {% endif %}
+
+            <li class="page-item disabled px-2 align-self-center">
+                <span class="store-page-info">
+                    {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+                </span>
+            </li>
+
+            {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link store-page-link" href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.next_page_number }}" aria-label="Keyingi">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link store-page-link" href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.paginator.num_pages }}" aria-label="Oxirgi">
+                        <i class="bi bi-chevron-double-right"></i>
+                    </a>
+                </li>
+            {% else %}
+                <li class="page-item disabled"><span class="page-link store-page-link"><i class="bi bi-chevron-right"></i></span></li>
+                <li class="page-item disabled"><span class="page-link store-page-link"><i class="bi bi-chevron-double-right"></i></span></li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+<style>
+    .store-pagination-wrapper { }
+    .store-pagination .pagination { gap: 4px; }
+    .store-pagination .page-item .page-link.store-page-link {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        border: none;
+        color: white;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-weight: 600;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .store-pagination .page-item .page-link.store-page-link:hover:not(.disabled) {
+        color: white;
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+    }
+    .store-pagination .page-item.disabled .page-link.store-page-link {
+        background: #e5e7eb;
+        color: #9ca3af;
+        cursor: not-allowed;
+    }
+    .store-page-info {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #475569;
+    }
+</style>
+{% endif %}

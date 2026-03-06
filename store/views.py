@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.core.paginator import Paginator
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required
@@ -165,9 +166,21 @@ def product_list(request):
         if pid not in products_with_variants:
             products_with_variants[pid] = {'product': v.product, 'variants': []}
         products_with_variants[pid]['variants'].append(v)
-    
+    list_products = list(products_with_variants.values())
+
+    # 100 tadan oshsa pagination
+    paginator = Paginator(list_products, 100)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    query_dict = request.GET.copy()
+    if 'page' in query_dict:
+        query_dict.pop('page')
+    query_string = query_dict.urlencode()
+
     context = {
-        'products_with_variants': list(products_with_variants.values()),
+        'products_with_variants': page_obj.object_list,
+        'page_obj': page_obj,
+        'query_string': query_string,
         'categories': categories,
         'selected_category': int(category_id) if category_id else None,
         'search_query': search_query or '',
@@ -734,6 +747,8 @@ def create_sale(request):
             customer_name = data.get('customer_name', '')
             customer_phone = data.get('customer_phone', '')
             payment_method = data.get('payment_method', 'cash')
+            payment_cash_usd = data.get('payment_cash_usd')
+            payment_card_usd = data.get('payment_card_usd')
             items = data.get('items', [])
             
             if not items:
@@ -811,9 +826,38 @@ def create_sale(request):
                     total += unit_price * quantity
                 
                 sale.total_amount = total
-                sale.save(update_fields=['total_amount'])
+                # To'lov bo'linmasi (USD) — mixed bo'lsa kiritiladi, aks holda avtomatik
+                cash_amt = Decimal('0')
+                card_amt = Decimal('0')
+                if payment_method == 'mixed':
+                    try:
+                        cash_amt = Decimal(str(payment_cash_usd or '0'))
+                        card_amt = Decimal(str(payment_card_usd or '0'))
+                    except (ValueError, TypeError):
+                        cash_amt = Decimal('0')
+                        card_amt = Decimal('0')
+                    # agar noto'g'ri bo'lsa: hammasini karta deb olamiz
+                    if cash_amt < 0 or card_amt < 0 or (cash_amt + card_amt) == 0:
+                        cash_amt = Decimal('0')
+                        card_amt = total
+                    # yig'indi jami summadan oshib ketsa yoki kam bo'lsa: cardni jami bo'yicha to'g'rilaymiz
+                    if cash_amt > total:
+                        cash_amt = total
+                        card_amt = Decimal('0')
+                    if cash_amt + card_amt != total:
+                        card_amt = max(Decimal('0'), total - cash_amt)
+                elif payment_method == 'cash':
+                    cash_amt = total
+                    card_amt = Decimal('0')
+                elif payment_method == 'card':
+                    cash_amt = Decimal('0')
+                    card_amt = total
+
+                sale.payment_cash_amount = cash_amt
+                sale.payment_card_amount = card_amt
+                sale.save(update_fields=['total_amount', 'payment_cash_amount', 'payment_card_amount'])
             
-            logger.info(f"Sale created: {sale.id}, Total: {total} so'm")
+            logger.info(f"Sale created: {sale.id}, Total: ${total} USD")
             return JsonResponse({'success': True, 'sale_id': sale.id})
             
         except Exception as e:
@@ -862,11 +906,55 @@ def create_sale(request):
             'stock': v.stock_quantity,
             'unit': v.product.unit,
         })
+
+    # Mavjud sotuvga mahsulot qo'shish rejimi (append_to_sale=? query parametri)
+    append_sale_id = request.GET.get('append_to_sale')
+    valid_append_sale_id = None
+    if append_sale_id:
+        try:
+            candidate_id = int(append_sale_id)
+            if Sale.objects.filter(pk=candidate_id, market=market).exists():
+                valid_append_sale_id = candidate_id
+        except (TypeError, ValueError):
+            valid_append_sale_id = None
+
+    # Mavjud sotuvni tahrirlash rejimi (edit_sale=? query parametri)
+    edit_sale_id = request.GET.get('edit_sale')
+    valid_edit_sale_id = None
+    edit_sale_items = []
+    if edit_sale_id:
+        try:
+            candidate_id = int(edit_sale_id)
+            sale_for_edit = Sale.objects.filter(pk=candidate_id, market=market).prefetch_related(
+                Prefetch('items', queryset=SaleItem.objects.select_related('variant__product'))
+            ).first()
+            if sale_for_edit:
+                valid_edit_sale_id = sale_for_edit.id
+                for item in sale_for_edit.items.all():
+                    product = item.variant.product if item.variant else getattr(item, 'product_old', None)
+                    unit = getattr(product, 'unit', 'dona') if product else 'dona'
+                    name = str(item.variant) if item.variant else (getattr(product, 'name', '') or '')
+                    stock = item.variant.stock_quantity if item.variant else 0
+                    edit_sale_items.append({
+                        'product_id': item.variant_id,
+                        'name': name,
+                        'price': float(item.unit_price),
+                        'quantity': item.quantity,
+                        'stock': stock,
+                        'unit': unit,
+                    })
+        except (TypeError, ValueError):
+            valid_edit_sale_id = None
+            edit_sale_items = []
+
     return render(request, 'store/create_sale.html', {
         'top_products': top_sold_variants,
         'top_products_json': json.dumps(top_products_json),
         'categories': categories,
         'current_usd_rate': current_usd_rate,
+        'append_sale_id': valid_append_sale_id,
+        'edit_sale_id': valid_edit_sale_id,
+        'edit_sale_items_json': json.dumps(edit_sale_items),
     })
 
 
@@ -896,14 +984,29 @@ def credit_list(request):
     ).order_by('-total_debt')
     
     total_debt = credits.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
-    
+    current_usd_rate = get_current_usd_rate(market)
+
+    # 100 tadan oshsa pagination
+    credits = credits.order_by('-sale_date')
+    paginator = Paginator(credits, 100)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    query_dict = request.GET.copy()
+    if 'page' in query_dict:
+        query_dict.pop('page')
+    query_string = query_dict.urlencode()
+
     # Get all customers for filter (shu market)
     customers = Customer.objects.filter(market=market, sale__payment_method='credit').distinct()
-    
+
     return render(request, 'store/credit_list.html', {
-        'credits': credits,
+        'credits': page_obj.object_list,
+        'page_obj': page_obj,
+        'query_string': query_string,
+        'total_credits_count': paginator.count,
         'customer_debts': customer_debts,
         'total_debt': total_debt,
+        'current_usd_rate': current_usd_rate,
         'customers': customers
     })
 
@@ -971,10 +1074,29 @@ def sale_list(request):
     payment_method = request.GET.get('payment_method')
     if payment_method:
         sales = sales.filter(payment_method=payment_method)
-    
+
+    # Faqat yakunlangan sotuvlar bo'yicha jami (bazada USD)
+    from django.db.models import Sum as _Sum
+    total_sales = sales.filter(status='completed').aggregate(_Sum('total_amount'))['total_amount__sum'] or 0
+    current_usd_rate = get_current_usd_rate(market)
+
+    # 100 tadan oshsa pagination
+    sales = sales.order_by('-sale_date')
+    paginator = Paginator(sales, 100)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    query_dict = request.GET.copy()
+    if 'page' in query_dict:
+        query_dict.pop('page')
+    query_string = query_dict.urlencode()
+
     context = {
-        'sales': sales,
-        'total_sales': sum(sale.total_amount for sale in sales),
+        'sales': page_obj.object_list,
+        'page_obj': page_obj,
+        'query_string': query_string,
+        'total_sales': total_sales,
+        'total_sales_count': paginator.count,
+        'current_usd_rate': current_usd_rate,
     }
     return render(request, 'store/sale_list.html', context)
 
@@ -984,7 +1106,222 @@ def sale_detail(request, pk):
     """Sotuv tafsilotlari va chek"""
     market = get_request_market(request)
     sale = get_object_or_404(Sale, pk=pk, market=market)
-    return render(request, 'store/sale_detail.html', {'sale': sale})
+    current_usd_rate = get_current_usd_rate(market)
+    return render(request, 'store/sale_detail.html', {'sale': sale, 'current_usd_rate': current_usd_rate})
+
+
+@require_market
+@require_http_methods(["POST"])
+def cancel_sale(request, pk):
+    """Sotuvni orqaga qaytarish (barcha mahsulotlarni omborga qaytarish, holatini 'Qaytarilgan' qilish)"""
+    market = get_request_market(request)
+    with transaction.atomic():
+        sale = get_object_or_404(Sale.objects.select_for_update(), pk=pk, market=market)
+        if sale.status == 'returned':
+            messages.info(request, "Bu sotuv allaqachon qaytarilgan.")
+            return redirect('store:sale_detail', pk=pk)
+        if sale.status != 'completed':
+            messages.error(request, "Faqat yakunlangan sotuvni qaytarish mumkin.")
+            return redirect('store:sale_detail', pk=pk)
+
+        # Omborga qaytarish
+        for item in sale.items.select_related('variant'):
+            if item.variant:
+                variant = item.variant
+                variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
+                variant.save(update_fields=['stock_quantity'])
+
+        sale.status = 'returned'
+        sale.save(update_fields=['status'])
+        messages.success(request, "Sotuv orqaga qaytarildi va mahsulotlar omborga qaytarildi.")
+    return redirect('store:sale_detail', pk=pk)
+
+
+@require_market
+@require_http_methods(["POST"])
+def delete_sale(request, pk):
+    """Sotuvni o'chirish. Agar hali qaytarilmagan bo'lsa, mahsulotlar omborga qaytariladi, so'ng sotuv o'chiriladi."""
+    market = get_request_market(request)
+    with transaction.atomic():
+        sale = get_object_or_404(Sale.objects.select_for_update(), pk=pk, market=market)
+
+        # Agar hali qaytarilmagan bo'lsa, omborga qaytaramiz
+        if sale.status == 'completed':
+            for item in sale.items.select_related('variant'):
+                if item.variant:
+                    variant = item.variant
+                    variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
+                    variant.save(update_fields=['stock_quantity'])
+
+        sale_id = sale.id
+        sale.delete()
+        messages.success(request, f"Sotuv #{sale_id} to'liq o'chirildi.")
+    return redirect('store:sale_list')
+
+
+@require_market
+@require_http_methods(["POST"])
+def append_sale(request, pk):
+    """Mavjud sotuvga yangi mahsulotlar qo'shish (inventar zaxirasini kamaytirib, jami summani oshirish)."""
+    market = get_request_market(request)
+    try:
+        data = json.loads(request.body)
+        items = data.get('items', [])
+        if not items:
+            return JsonResponse({'error': "Mahsulotlar ro'yxati bo'sh."}, status=400)
+
+        with transaction.atomic():
+            sale = get_object_or_404(Sale.objects.select_for_update(), pk=pk, market=market)
+            if sale.status != 'completed':
+                return JsonResponse({'error': "Faqat yakunlangan sotuvga mahsulot qo'shish mumkin."}, status=400)
+
+            variant_ids = [int(item_data['product_id']) for item_data in items]
+            variants_dict = {
+                v.id: v for v in ProductVariant.objects.select_for_update().filter(
+                    pk__in=variant_ids,
+                    product__category__market=market
+                )
+            }
+            if len(variants_dict) != len(variant_ids):
+                return JsonResponse({'error': 'Mahsulot topilmadi'}, status=400)
+
+            # Zaxirani tekshirish
+            for item_data in items:
+                vid = int(item_data['product_id'])
+                quantity = int(item_data['quantity'])
+                if variants_dict[vid].stock_quantity < quantity:
+                    return JsonResponse({
+                        'error': f'{variants_dict[vid]} uchun yetarli mahsulot yo\'q (omborda: {variants_dict[vid].stock_quantity} dona)'
+                    }, status=400)
+
+            total_added = Decimal('0')
+            for item_data in items:
+                variant = variants_dict[int(item_data['product_id'])]
+                quantity = int(item_data['quantity'])
+                unit_price = Decimal(str(item_data['price']))
+
+                SaleItem.objects.create(
+                    sale=sale,
+                    variant=variant,
+                    quantity=quantity,
+                    unit_price=unit_price
+                )
+                variant.stock_quantity = max(0, variant.stock_quantity - quantity)
+                variant.save(update_fields=['stock_quantity'])
+                total_added += unit_price * quantity
+
+            sale.total_amount += total_added
+            sale.save(update_fields=['total_amount'])
+
+        logger.info(f"Sale appended: {sale.id}, Added total: ${total_added} USD")
+        return JsonResponse({'success': True, 'sale_id': sale.id})
+    except Exception as e:
+        logger.error(f"Error appending sale: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@require_market
+@require_http_methods(["POST"])
+def edit_sale(request, pk):
+    """Mavjud sotuvni to'liq tahrirlash: eski mahsulotlarni korzinkadan olib, yangisini yozadi."""
+    market = get_request_market(request)
+    try:
+        data = json.loads(request.body)
+        items = data.get('items', [])
+        payment_method = data.get('payment_method')
+        payment_cash_usd = data.get('payment_cash_usd')
+        payment_card_usd = data.get('payment_card_usd')
+        if not items:
+            return JsonResponse({'error': "Mahsulotlar ro'yxati bo'sh."}, status=400)
+
+        with transaction.atomic():
+            sale = get_object_or_404(Sale.objects.select_for_update(), pk=pk, market=market)
+            if sale.status != 'completed':
+                return JsonResponse({'error': "Faqat yakunlangan sotuvni tahrirlash mumkin."}, status=400)
+
+            # Eski mahsulotlarni omborga qaytaramiz
+            for item in sale.items.select_related('variant'):
+                if item.variant:
+                    variant = item.variant
+                    variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
+                    variant.save(update_fields=['stock_quantity'])
+
+            # Eski itemlarni o'chiramiz
+            sale.items.all().delete()
+
+            variant_ids = [int(item_data['product_id']) for item_data in items]
+            variants_dict = {
+                v.id: v for v in ProductVariant.objects.select_for_update().filter(
+                    pk__in=variant_ids,
+                    product__category__market=market
+                )
+            }
+            if len(variants_dict) != len(variant_ids):
+                return JsonResponse({'error': 'Mahsulot topilmadi'}, status=400)
+
+            # Zaxirani tekshirish
+            for item_data in items:
+                vid = int(item_data['product_id'])
+                quantity = int(item_data['quantity'])
+                if variants_dict[vid].stock_quantity < quantity:
+                    return JsonResponse({
+                        'error': f'{variants_dict[vid]} uchun yetarli mahsulot yo\'q (omborda: {variants_dict[vid].stock_quantity} dona)'
+                    }, status=400)
+
+            total = Decimal('0')
+            for item_data in items:
+                variant = variants_dict[int(item_data['product_id'])]
+                quantity = int(item_data['quantity'])
+                unit_price = Decimal(str(item_data['price']))
+
+                SaleItem.objects.create(
+                    sale=sale,
+                    variant=variant,
+                    quantity=quantity,
+                    unit_price=unit_price
+                )
+                variant.stock_quantity = max(0, variant.stock_quantity - quantity)
+                variant.save(update_fields=['stock_quantity'])
+                total += unit_price * quantity
+
+            sale.total_amount = total
+            if payment_method:
+                sale.payment_method = payment_method
+
+            # To'lov bo'linmasi (USD)
+            cash_amt = Decimal('0')
+            card_amt = Decimal('0')
+            if sale.payment_method == 'mixed':
+                try:
+                    cash_amt = Decimal(str(payment_cash_usd or '0'))
+                    card_amt = Decimal(str(payment_card_usd or '0'))
+                except (ValueError, TypeError):
+                    cash_amt = Decimal('0')
+                    card_amt = Decimal('0')
+                if cash_amt < 0 or card_amt < 0 or (cash_amt + card_amt) == 0:
+                    cash_amt = Decimal('0')
+                    card_amt = total
+                if cash_amt > total:
+                    cash_amt = total
+                    card_amt = Decimal('0')
+                if cash_amt + card_amt != total:
+                    card_amt = max(Decimal('0'), total - cash_amt)
+            elif sale.payment_method == 'cash':
+                cash_amt = total
+                card_amt = Decimal('0')
+            elif sale.payment_method == 'card':
+                cash_amt = Decimal('0')
+                card_amt = total
+
+            sale.payment_cash_amount = cash_amt
+            sale.payment_card_amount = card_amt
+            sale.save(update_fields=['total_amount', 'payment_method', 'payment_cash_amount', 'payment_card_amount'])
+
+        logger.info(f"Sale edited: {sale.id}, New total: ${total} USD")
+        return JsonResponse({'success': True, 'sale_id': sale.id})
+    except Exception as e:
+        logger.error(f"Error editing sale: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=400)
 
 
 @require_market
@@ -1017,18 +1354,18 @@ def print_receipt(request, pk):
     lines.append(f"To'lov: {pay}")
     lines.append('')
     for item in sale.items.all():
-        usd = float(item.subtotal) / receipt_rate
+        item_usd = float(item.subtotal)
         product = item.variant.product if item.variant else getattr(item, 'product_old', None)
         unit = getattr(product, 'unit', 'dona') if product else 'dona'
         qty_suffix = " M" if unit == 'metr' else "x"
-        lines.append(f"{item.product.name}  {item.quantity}{qty_suffix}  ${usd:.2f}")
+        lines.append(f"{item.product.name}  {item.quantity}{qty_suffix}  ${item_usd:.2f}")
         if item.variant:
             params = [av.value for av in item.variant.attribute_values.all() if getattr(av.attribute, 'name', '') == 'parametr']
             if params:
                 lines.append("  " + ", ".join(params))
-    total_usd = float(sale.total_amount) / receipt_rate
+    total_usd = float(sale.total_amount)
     total_usd_formatted = f"{total_usd:,.2f}"
-    total_soom_formatted = f"{float(sale.total_amount):,.0f}"
+    total_soom_formatted = f"{total_usd * receipt_rate:,.0f}"
     lines.append('')
     lines.append(f"JAMI: ${total_usd_formatted}  {total_soom_formatted} so'm")
     receipt_text = '\n'.join(lines)
@@ -1277,6 +1614,50 @@ def search_customers_autocomplete(request):
     } for c in customers]
     
     return JsonResponse({'customers': data})
+
+
+@require_market
+def statistics(request):
+    """Statistika: sotuvlar va qarzlar summasi (kun bo'yicha yoki hammasi)."""
+    market = get_request_market(request)
+    current_usd_rate = get_current_usd_rate(market)
+
+    day = (request.GET.get('date') or '').strip()
+
+    sales_qs = Sale.objects.filter(market=market, status='completed')
+    if day:
+        sales_qs = sales_qs.filter(sale_date__date=day)
+
+    # Summalar (USD va so'm) — so'mni har sotuvning usd_rate bo'yicha hisoblaymiz
+    total_sales_usd = Decimal('0')
+    total_sales_uzs = Decimal('0')
+    for s in sales_qs.only('total_amount', 'usd_rate'):
+        rate = s.usd_rate if s.usd_rate else current_usd_rate
+        usd = (s.total_amount or Decimal('0'))
+        total_sales_usd += usd
+        total_sales_uzs += usd * rate
+
+    credits_qs = Sale.objects.filter(market=market, status='completed', payment_method='credit')
+    if day:
+        credits_qs = credits_qs.filter(sale_date__date=day)
+
+    total_credit_usd = Decimal('0')
+    total_credit_uzs = Decimal('0')
+    for s in credits_qs.only('total_amount', 'usd_rate'):
+        rate = s.usd_rate if s.usd_rate else current_usd_rate
+        usd = (s.total_amount or Decimal('0'))
+        total_credit_usd += usd
+        total_credit_uzs += usd * rate
+
+    context = {
+        'date': day,
+        'total_sales_usd': total_sales_usd,
+        'total_sales_uzs': total_sales_uzs,
+        'total_credit_usd': total_credit_usd,
+        'total_credit_uzs': total_credit_uzs,
+        'current_usd_rate': current_usd_rate,
+    }
+    return render(request, 'store/statistics.html', context)
 
 
 # @login_required

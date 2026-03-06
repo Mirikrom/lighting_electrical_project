@@ -14,6 +14,8 @@
         
         body {
             font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: 600;
             max-width: 300px;
             margin: 20px auto;
             padding: 20px;
@@ -28,19 +30,21 @@
         }
         
         .header h1 {
-            font-size: 20px;
+            font-size: 22px;
             margin: 0;
             font-weight: bold;
         }
         
         .header p {
             margin: 5px 0;
-            font-size: 12px;
+            font-size: 14px;
+            font-weight: 600;
         }
         
         .info {
             margin: 10px 0;
-            font-size: 12px;
+            font-size: 14px;
+            font-weight: 600;
         }
         
         .items {
@@ -57,7 +61,8 @@
         .item {
             display: flex;
             justify-content: space-between;
-            font-size: 12px;
+            font-size: 14px;
+            font-weight: 600;
         }
         
         .item-name {
@@ -66,8 +71,9 @@
         }
         
         .item-parametrlar {
-            font-size: 11px;
-            color: #555;
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
             margin-top: 2px;
             margin-left: 0;
             padding-left: 0;
@@ -83,13 +89,21 @@
         }
         
         .total {
-            text-align: right;
-            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            font-size: 17px;
             font-weight: bold;
             margin-top: 15px;
             padding-top: 10px;
             border-top: 2px solid #000;
             line-height: 1.5;
+        }
+        .total-label {
+            font-weight: bold;
+        }
+        .total-amounts {
+            text-align: right;
         }
         
         .footer {
@@ -97,7 +111,8 @@
             margin-top: 20px;
             padding-top: 15px;
             border-top: 1px dashed #000;
-            font-size: 11px;
+            font-size: 13px;
+            font-weight: 600;
         }
         
         .action-buttons {
@@ -159,7 +174,7 @@
 <body>
     <div id="receipt-content">
     <div class="header">
-        <h1>Laziz_Electronics_Store</h1>
+        <h1>Laziz_Electro</h1>
         <p>Chek #{{ sale.id }}</p>
         <p>{{ sale.sale_date|date:"d.m.Y H:i" }}</p>
         <p><strong>Bugungi kurs:</strong> {{ receipt_rate_formatted }} so'm</p>
@@ -175,8 +190,16 @@
         <p><strong>To'lov:</strong> 
             {% if sale.payment_method == 'cash' %}Naqd pul
             {% elif sale.payment_method == 'card' %}Karta
-            {% else %}O'tkazma{% endif %}
+            {% elif sale.payment_method == 'mixed' %}Aralash (Naqd + Karta)
+            {% elif sale.payment_method == 'credit' %}Qarzga
+            {% else %}-{% endif %}
         </p>
+        {% if sale.payment_method == 'mixed' %}
+        <p style="margin-top: 6px;">
+            Naqd: ${{ sale.payment_cash_amount|floatformat:2|comma_to_dot }} ({{ sale.payment_cash_amount|multiply:receipt_rate|intdot }} so'm)<br>
+            Karta: ${{ sale.payment_card_amount|floatformat:2|comma_to_dot }} ({{ sale.payment_card_amount|multiply:receipt_rate|intdot }} so'm)
+        </p>
+        {% endif %}
     </div>
     
     <div class="items">
@@ -185,7 +208,7 @@
             <div class="item">
                 <div class="item-name">{{ item.product.name }}</div>
                 <div class="item-qty">{{ item.quantity }}{% if item.product.unit == 'metr' %} M{% else %}x{% endif %}</div>
-                <div class="item-price">${{ item.subtotal|divide:receipt_rate|floatformat:2|comma_to_dot }}</div>
+                <div class="item-price">${{ item.subtotal|floatformat:2|comma_to_dot }}</div>
             </div>
             {% if item.variant %}
             {% with params=item.variant|variant_parametrlar %}
@@ -199,9 +222,8 @@
     </div>
     
     <div class="total">
-        JAMI:<br>
-        ${{ total_usd_formatted }}<br>
-        {{ total_soom_formatted }} so'm
+        <span class="total-label">JAMI:</span>
+        <span class="total-amounts">${{ total_usd_formatted }}<br>{{ total_soom_formatted }} so'm</span>
     </div>
     
     <div class="footer">
@@ -213,28 +235,15 @@
     
     <div class="action-buttons no-print">
         <button class="btn-print" onclick="window.print()">🖨️ Chekni chop etish</button>
-        <button class="btn-telegram" onclick="sendToTelegram()">📤 Telegramga yuborish</button>
+        <button class="btn-telegram" onclick="saveReceiptImage()">💾 Chekni saqlab olish</button>
         <a href="{% url 'store:create_sale' %}" class="btn-link btn-back">← Ekranga qaytish</a>
     </div>
-    <p class="no-print" style="font-size: 11px; color: #666; margin-top: 8px; text-align: center; max-width: 280px; margin-left: auto; margin-right: auto;">
-        Ochilgan oynada <strong>«Telegram»</strong>ni tanlang — keyin Telegramda kimga yuborishni tanlaysiz.
-    </p>
-    <p class="no-print" style="font-size: 10px; color: #999; margin-top: 4px; text-align: center;">
-        Agar Telegram ko‘rinmasa, <a href="#" id="telegramWebLink">bu yerni bosing</a>.
-    </p>
+
     
     <script>
-        var receiptText = "{{ receipt_text|escapejs }}";
-        var encodedText = encodeURIComponent(receiptText);
-        
-        function sendToTelegram() {
+        function saveReceiptImage() {
             var receiptEl = document.getElementById('receipt-content');
-            if (!receiptEl) {
-                fallbackTelegram();
-                return;
-            }
-            if (typeof html2canvas === 'undefined') {
-                fallbackTelegram();
+            if (!receiptEl || typeof html2canvas === 'undefined') {
                 return;
             }
             html2canvas(receiptEl, {
@@ -245,47 +254,20 @@
             }).then(function(canvas) {
                 canvas.toBlob(function(blob) {
                     if (!blob) {
-                        fallbackTelegram();
                         return;
                     }
-                    var file = new File([blob], 'chek-{{ sale.id }}.png', { type: 'image/png' });
-                    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                        navigator.share({ files: [file] }).then(function() {
-                            /* Share tugadi, qo'shimcha ochish kerak emas */
-                        }).catch(function(err) {
-                            if (err.name !== 'AbortError') downloadAndOpenTg(blob);
-                        });
-                    } else {
-                        downloadAndOpenTg(blob);
-                    }
+                    var a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = 'chek-{{ sale.id }}.png';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(function() { URL.revokeObjectURL(a.href); }, 500);
                 }, 'image/png');
             }).catch(function() {
-                fallbackTelegram();
+                // hech narsa qilmaymiz
             });
         }
-        
-        function downloadAndOpenTg(blob) {
-            var a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'chek-{{ sale.id }}.png';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(function() { URL.revokeObjectURL(a.href); }, 500);
-        }
-        
-        function fallbackTelegram() {
-            var tgWebUrl = 'https://t.me/share/url?text=' + encodedText;
-            document.getElementById('telegramWebLink').href = tgWebUrl;
-            document.getElementById('telegramWebLink').setAttribute('target', '_blank');
-            window.location.href = 'tg://msg?text=' + encodedText;
-        }
-        
-        window.onload = function() {
-            var tgWebUrl = 'https://t.me/share/url?text=' + encodedText;
-            var el = document.getElementById('telegramWebLink');
-            if (el) { el.href = tgWebUrl; el.setAttribute('target', '_blank'); }
-        };
     </script>
 </body>
 </html>

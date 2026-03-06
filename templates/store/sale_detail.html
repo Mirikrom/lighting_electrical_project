@@ -9,6 +9,23 @@
         <i class="bi bi-receipt"></i> Sotuv #{{ sale.id }}
     </h1>
     <div class="d-flex gap-2">
+        <a href="{% url 'store:create_sale' %}?edit_sale={{ sale.id }}" class="btn btn-outline-primary">
+            <i class="bi bi-pencil-square"></i> Sotuvni tahrirlash
+        </a>
+        {% if sale.status == 'completed' %}
+        <form method="post" action="{% url 'store:cancel_sale' sale.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-warning" onclick="return confirm('Sotuvni orqaga qaytarish? Barcha mahsulotlar omborga qaytariladi.');">
+                <i class="bi bi-arrow-counterclockwise"></i> Qaytarish
+            </button>
+        </form>
+        {% endif %}
+        <form method="post" action="{% url 'store:delete_sale' sale.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Sotuvni butunlay o\'chirishni xohlaysizmi?');">
+                <i class="bi bi-trash"></i> O'chirish
+            </button>
+        </form>
         <a href="{% url 'store:print_receipt' sale.pk %}" class="btn btn-success" target="_blank">
             <i class="bi bi-printer"></i> Chek chiqarish
         </a>
@@ -42,15 +59,15 @@
                                 <small class="text-muted">SKU: {{ item.product.sku }}</small>
                             </td>
                             <td>{{ item.quantity }}{% if item.product.unit == 'metr' %} M{% else %} dona{% endif %}</td>
-                            <td>{{ item.unit_price|floatformat:0|comma_to_dot }} so'm</td>
-                            <td><strong>{{ item.subtotal|floatformat:0|comma_to_dot }} so'm</strong></td>
+                            <td>${{ item.unit_price|floatformat:2|comma_to_dot }} <small class="text-muted">({% with r=sale.usd_rate|default:current_usd_rate %}{{ item.unit_price|multiply:r|floatformat:0|intdot }}{% endwith %} so'm)</small></td>
+                            <td><strong>${{ item.subtotal|floatformat:2|comma_to_dot }}</strong> <small class="text-muted">({% with r=sale.usd_rate|default:current_usd_rate %}{{ item.subtotal|multiply:r|floatformat:0|intdot }}{% endwith %} so'm)</small></td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     <tfoot class="table-dark">
                         <tr>
                             <th colspan="3">JAMI:</th>
-                            <th>{{ sale.total_amount|floatformat:0|comma_to_dot }} so'm</th>
+                            <th>${{ sale.total_amount|floatformat:2|comma_to_dot }} ({% with r=sale.usd_rate|default:current_usd_rate %}{{ sale.total_amount|multiply:r|floatformat:0|intdot }}{% endwith %} so'm)</th>
                         </tr>
                     </tfoot>
                 </table>
@@ -65,6 +82,16 @@
             </div>
             <div class="card-body">
                 <p><strong>Sana va vaqt:</strong><br>{{ sale.sale_date|date:"d.m.Y H:i" }}</p>
+                
+                <p><strong>Holati:</strong><br>
+                    {% if sale.status == 'completed' %}
+                        <span class="badge bg-success">Yakunlangan</span>
+                    {% elif sale.status == 'returned' %}
+                        <span class="badge bg-warning text-dark">Qaytarilgan</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Noma\'lum</span>
+                    {% endif %}
+                </p>
                 
                 {% if sale.customer %}
                 <p><strong>Mijoz:</strong><br>
@@ -82,12 +109,22 @@
                         <span class="badge bg-success">Naqd pul</span>
                     {% elif sale.payment_method == 'card' %}
                         <span class="badge bg-primary">Karta</span>
+                    {% elif sale.payment_method == 'mixed' %}
+                        <span class="badge bg-warning text-dark">Aralash</span>
                     {% elif sale.payment_method == 'credit' %}
                         <span class="badge bg-danger">Qarzga</span>
                     {% else %}
                         <span class="badge bg-info">O'tkazma</span>
                     {% endif %}
                 </p>
+                {% if sale.payment_method == 'mixed' %}
+                <p><strong>Aralash to'lov:</strong><br>
+                    {% with r=sale.usd_rate|default:current_usd_rate %}
+                        Naqd: ${{ sale.payment_cash_amount|floatformat:2|comma_to_dot }} ({{ sale.payment_cash_amount|multiply:r|floatformat:0|intdot }} so'm)<br>
+                        Karta: ${{ sale.payment_card_amount|floatformat:2|comma_to_dot }} ({{ sale.payment_card_amount|multiply:r|floatformat:0|intdot }} so'm)
+                    {% endwith %}
+                </p>
+                {% endif %}
                 
                 {% if sale.created_by %}
                 <p><strong>Yaratgan:</strong><br>{{ sale.created_by.username }}</p>
