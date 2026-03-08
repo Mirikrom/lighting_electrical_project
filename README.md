@@ -41,6 +41,21 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
+## Docker bilan ishga tushirish
+
+Loyihani Docker orqali tezda ishga tushirish uchun:
+
+1. Docker image va containerlarni ishga tushiring:
+```bash
+docker-compose up -d
+```
+
+2. Brauzerda oching:
+- http://127.0.0.1:8000/
+- http://127.0.0.1:8000/admin/
+
+Kodga o'zgartirish kiritganingizda, ular darhol container ichida aks etadi, chunki loyiha katalogi bind mount orqali ulab qo'yilgan (`.:/app`).
+
 ## Foydalanish
 
 - Admin panel: http://127.0.0.1:8000/admin/
