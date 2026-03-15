@@ -1034,8 +1034,7 @@ def create_sale(request):
     
     categories = Category.objects.filter(market=market)
     
-    # Top 8 eng ko'p sotilgan variantlar (1-o'rinda eng ko'p sotilgan)
-    # Tez tanlov uchun faqat mavjud (stokda bor yoki cheklanmagan) variantlar
+    # Top 8 eng ko'p sotilgan mahsulotlar (variant emas); har bir mahsulotning barcha variantlari Tez tanlovda ko'rsatiladi
     from django.db.models import Q
     top_sold_variants = ProductVariant.objects.filter(
         is_active=True,
@@ -1047,21 +1046,40 @@ def create_sale(request):
         total_sold=Sum('saleitem__quantity')
     ).filter(
         total_sold__gt=0
-    ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute').order_by('-total_sold')[:8]
-    
-    if not top_sold_variants.exists():
-        top_sold_variants = ProductVariant.objects.filter(
+    ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute').order_by('-total_sold')[:20]
+    # Distinct product ids (tartib saqlanadi), max 8 ta mahsulot
+    seen_product_ids = []
+    for v in top_sold_variants:
+        pid = v.product_id
+        if pid not in seen_product_ids:
+            seen_product_ids.append(pid)
+        if len(seen_product_ids) >= 8:
+            break
+    if not seen_product_ids:
+        fallback_variants = ProductVariant.objects.filter(
             is_active=True,
             product__is_active=True,
             product__category__market=market
         ).filter(
             Q(unlimited_stock=True) | Q(stock_quantity__gt=0)
-        ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute').order_by('-created_at')[:8]
-    
+        ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute').order_by('-created_at')[:20]
+        seen_product_ids = []
+        for v in fallback_variants:
+            if v.product_id not in seen_product_ids:
+                seen_product_ids.append(v.product_id)
+            if len(seen_product_ids) >= 8:
+                break
+    # Shu 8 ta mahsulotning barcha aktiv variantlari (stokda bor yoki cheklanmagan)
+    top_all_variants = ProductVariant.objects.filter(
+        is_active=True,
+        product__in=seen_product_ids
+    ).filter(
+        Q(unlimited_stock=True) | Q(stock_quantity__gt=0)
+    ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute').order_by('product_id')
     current_usd_rate = get_current_usd_rate(market)
-    # JSON da narx USD da — $ o'zgarmasligi uchun, so'm faqat kurs bo'yicha hisoblanadi
+    # JSON: barcha variantlar (guruhlash frontend da — har mahsulot uchun "N rang")
     top_products_json = []
-    for v in top_sold_variants:
+    for v in top_all_variants:
         color = ''
         for av in v.attribute_values.all():
             if av.attribute.name == 'color':
@@ -1079,6 +1097,27 @@ def create_sale(request):
             'unlimited_stock': v.unlimited_stock,
             'unit': v.product.unit,
         })
+    # Shablon uchun guruhlar: har mahsulot — bitta yoki bir nechta variant
+    top_product_groups = []
+    for pid in seen_product_ids:
+        variants_for_product = [v for v in top_all_variants if v.product_id == pid]
+        if not variants_for_product:
+            continue
+        v0 = variants_for_product[0]
+        group = {
+            'product_id': pid,
+            'product_name': v0.product.name,
+            'variants': variants_for_product,
+            'variants_json': json.dumps([{
+                'id': v.id,
+                'variant_name': str(v),
+                'price': float(v.price),
+                'stock': v.stock_quantity,
+                'unlimited_stock': v.unlimited_stock,
+                'unit': v.product.unit,
+            } for v in variants_for_product]).replace('"', '&quot;'),
+        }
+        top_product_groups.append(group)
 
     # Mavjud sotuvga mahsulot qo'shish rejimi (append_to_sale=? query parametri)
     append_sale_id = request.GET.get('append_to_sale')
@@ -1121,7 +1160,7 @@ def create_sale(request):
             edit_sale_items = []
 
     return render(request, 'store/create_sale.html', {
-        'top_products': top_sold_variants,
+        'top_product_groups': top_product_groups,
         'top_products_json': json.dumps(top_products_json),
         'categories': categories,
         'current_usd_rate': current_usd_rate,

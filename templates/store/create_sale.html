@@ -1064,7 +1064,9 @@
                 <div class="top-products-section" id="topProductsSection">
                     <div class="top-products-label">Tez tanlov</div>
                     <div class="quick-products" id="topProductsContainer">
-                        {% for variant in top_products %}
+                        {% for group in top_product_groups %}
+                        {% if group.variants|length == 1 %}
+                        {% with variant=group.variants.0 %}
                         <div class="quick-product-btn {% if variant.stock_quantity == 0 and not variant.unlimited_stock %}quick-product-out-of-stock{% endif %}" data-variant-id="{{ variant.id }}" data-variant-name="{{ variant.product.name }}" data-variant-price="{{ variant.price|floatformat:2|comma_to_dot }}" data-variant-stock="{% if variant.unlimited_stock %}999999{% else %}{{ variant.stock_quantity }}{% endif %}" data-variant-unit="{{ variant.product.unit }}">
                             <div class="quick-product-name">{{ variant.product.name }}</div>
                             <div class="quick-product-details">
@@ -1078,6 +1080,13 @@
                                 {% endif %}
                             </div>
                         </div>
+                        {% endwith %}
+                        {% else %}
+                        <div class="quick-product-btn quick-product-btn-multi" data-product-id="{{ group.product_id }}" data-product-name="{{ group.product_name }}" data-variants="{{ group.variants_json }}">
+                            <div class="quick-product-name">{{ group.product_name }}</div>
+                            <div class="quick-product-details">{{ group.variants|length }} rang</div>
+                        </div>
+                        {% endif %}
                         {% empty %}
                         <div style="padding: 8px; color: #6b7280; font-size: 12px;">Top mahsulotlar yo'q</div>
                         {% endfor %}
@@ -1756,9 +1765,19 @@
         const topProductsContainer = document.getElementById('topProductsContainer');
         if (topProductsContainer) {
             topProductsContainer.addEventListener('click', function(e) {
-                const btn = e.target.closest('.quick-product-btn[data-variant-id]');
+                const btn = e.target.closest('.quick-product-btn');
                 if (!btn) return;
                 e.preventDefault();
+                if (btn.hasAttribute('data-product-id')) {
+                    const productName = btn.getAttribute('data-product-name');
+                    const variantsStr = btn.getAttribute('data-variants');
+                    if (variantsStr) {
+                        const variants = JSON.parse(variantsStr.replace(/&quot;/g, '"'));
+                        openVariantModal(productName, variants);
+                    }
+                    return;
+                }
+                if (!btn.hasAttribute('data-variant-id')) return;
                 const variantId = parseInt(btn.getAttribute('data-variant-id'));
                 const variantName = btn.getAttribute('data-variant-name') || '';
                 const variantStock = parseInt(btn.getAttribute('data-variant-stock')) || 0;
