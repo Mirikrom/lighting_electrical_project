@@ -1661,17 +1661,22 @@ def search_products_autocomplete(request):
     
     if len(query) < 2:
         return JsonResponse({'products': []})
-    
+
+    # Avval qidiruv so'rovi bo'yicha mahsulotlarni topamiz (nomi yoki istalgan varianti SKU si mos kelsa)
+    matched_products_qs = Product.objects.filter(
+        is_active=True,
+        category__market=market
+    ).filter(
+        Q(name__icontains=query) | Q(variants__sku__icontains=query)
+    ).distinct()[:20]
+
+    # Shu mahsulotlarning barcha aktiv variantlarini qaytaramiz (limit mahsulot sonida, variant emas)
     variants = ProductVariant.objects.filter(
         is_active=True,
-        product__is_active=True,
-        product__category__market=market
-    ).filter(
-        Q(product__name__icontains=query) | Q(sku__icontains=query)
+        product__in=matched_products_qs
     ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute')
     if not include_out_of_stock:
         variants = variants.filter(stock_quantity__gt=0, unlimited_stock=False)
-    variants = variants[:20]
     
     rate = get_current_usd_rate(market)
     data = []
