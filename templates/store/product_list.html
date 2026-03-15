@@ -499,8 +499,14 @@
                     <td>
                         <div class="product-variant product-variant-rows" style="display: flex; flex-direction: column; gap: 6px;">
                             {% for v in variants %}
-                            <span class="{% if v.stock_quantity <= 0 %}stock-out{% else %}stock-available{% endif %} product-stock" style="display: inline-block; width: fit-content;">
-                                {% if v.stock_quantity <= 0 %}0 {{ v.product.get_unit_display }} (qolmagan){% else %}{{ v.stock_quantity }} {{ v.product.get_unit_display }}{% endif %}
+                            <span class="{% if v.unlimited_stock %}stock-available{% elif v.stock_quantity <= 0 %}stock-out{% else %}stock-available{% endif %} product-stock" style="display: inline-block; width: fit-content;">
+                                {% if v.unlimited_stock %}
+                                    Cheklanmagan
+                                {% elif v.stock_quantity <= 0 %}
+                                    0 {{ v.product.get_unit_display }} (qolmagan)
+                                {% else %}
+                                    {{ v.stock_quantity }} {{ v.product.get_unit_display }}
+                                {% endif %}
                             </span>
                             {% endfor %}
                         </div>

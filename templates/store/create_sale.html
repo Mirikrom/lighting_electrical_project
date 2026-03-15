@@ -248,6 +248,31 @@
         border-color: #f87171;
         color: #991b1b;
     }
+    .btn-add-product-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #166534;
+        background: #dcfce7;
+        border: 1px solid #bbf7d0;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-add-product-inline:hover {
+        background: #bbf7d0;
+        border-color: #86efac;
+        color: #15803d;
+    }
+    .th-actions-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+    }
     
     /* Doim 10 ta qator joyi (1 sarlavha + 10 qator), ortiqchasi scroll */
     .order-table-wrapper {
@@ -1040,10 +1065,17 @@
                     <div class="top-products-label">Tez tanlov</div>
                     <div class="quick-products" id="topProductsContainer">
                         {% for variant in top_products %}
-                        <div class="quick-product-btn {% if variant.stock_quantity == 0 %}quick-product-out-of-stock{% endif %}" data-variant-id="{{ variant.id }}" data-variant-name="{{ variant.product.name }}" data-variant-price="{{ variant.price|floatformat:2|comma_to_dot }}" data-variant-stock="{{ variant.stock_quantity }}" data-variant-unit="{{ variant.product.unit }}">
+                        <div class="quick-product-btn {% if variant.stock_quantity == 0 and not variant.unlimited_stock %}quick-product-out-of-stock{% endif %}" data-variant-id="{{ variant.id }}" data-variant-name="{{ variant.product.name }}" data-variant-price="{{ variant.price|floatformat:2|comma_to_dot }}" data-variant-stock="{% if variant.unlimited_stock %}999999{% else %}{{ variant.stock_quantity }}{% endif %}" data-variant-unit="{{ variant.product.unit }}">
                             <div class="quick-product-name">{{ variant.product.name }}</div>
                             <div class="quick-product-details">
-                                {{ variant.price|floatformat:2|comma_to_dot }}$ ({{ variant.price|multiply:current_usd_rate|intdot }} so'm) | {% if variant.stock_quantity == 0 %}<span style="color: #b91c1c; font-weight: 600;">0 {{ variant.product.get_unit_display }}</span>{% else %}{{ variant.stock_quantity }} {{ variant.product.get_unit_display }}{% endif %}
+                                {{ variant.price|floatformat:2|comma_to_dot }}$ ({{ variant.price|multiply:current_usd_rate|intdot }} so'm) |
+                                {% if variant.unlimited_stock %}
+                                    Cheklanmagan
+                                {% elif variant.stock_quantity == 0 %}
+                                    <span style="color: #b91c1c; font-weight: 600;">0 {{ variant.product.get_unit_display }} (qolmagan)</span>
+                                {% else %}
+                                    {{ variant.stock_quantity }} {{ variant.product.get_unit_display }}
+                                {% endif %}
                             </div>
                         </div>
                         {% empty %}
@@ -1076,16 +1108,22 @@
                     </thead>
                     <tbody id="orderTableBody">
                         <tr>
-                            <td colspan="6" style="text-align: center; padding: 40px; color: #9ca3af;">
-                                Savat bo'sh
+                            <td colspan="6" style="text-align: center; padding: 40px; color: #9ca3af;">Savat bo'sh</td>
+                        </tr>
+                        <tr class="add-product-row no-print">
+                            <td colspan="6" style="text-align: center; padding: 10px;">
+                                <button type="button" class="btn-add-product-inline" onclick="openAddProductModal()" title="Yangi mahsulot qo'shish">
+                                    <i class="bi bi-plus-lg"></i> Mahsulot qo'shish
+                                </button>
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            <!-- Mobil: korzinka tozalash + kartalar -->
-            <div class="mobile-cart-actions mobile-only" style="display: none;" id="cartClearBarMobile">
-                <button type="button" class="btn-clear-cart-inline cart-clear-btn" onclick="clearCart()"><i class="bi bi-trash"></i> Korzinkani tozalash</button>
+            <!-- Mobil: mahsulot qo'shish + korzinka tozalash -->
+            <div class="mobile-cart-actions mobile-only no-print" style="display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0;" id="cartClearBarMobile">
+                <button type="button" class="btn-add-product-inline" onclick="openAddProductModal()"><i class="bi bi-plus-lg"></i> Mahsulot qo'shish</button>
+                <button type="button" class="btn-clear-cart-inline cart-clear-btn" onclick="clearCart()" style="display: none;" id="cartClearBarMobileBtn"><i class="bi bi-trash"></i> Tozalash</button>
             </div>
             <div class="mobile-cart-list mobile-only" id="orderTableBodyMobile"></div>
         </div>
@@ -1120,19 +1158,27 @@
             <!-- Order summary — doim ko'rinadi, summalar korzinka bo'yicha yangilanadi -->
             <div class="order-summary" id="orderSummary">
                 <div class="summary-row">
-                    <span class="summary-label">YAKUNIY TO'LOV (UZS)</span>
-                    <span class="summary-value" id="totalPaymentUZS">0 so'm</span>
+                    <span class="summary-label">Umumiy summa ($)</span>
+                    <span class="summary-value" id="subtotalUSD">0 $</span>
                 </div>
                 <div class="summary-row">
-                    <span class="summary-label">YAKUNIY TO'LOV ($)</span>
+                    <span class="summary-label">Umumiy summa (UZS)</span>
+                    <span class="summary-value" id="subtotalUZS">0 so'm</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Chegirma</span>
+                    <span class="summary-value" id="discount">0 so'm</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Yakuniy to'lov ($)</span>
                     <span class="summary-value" id="totalPaymentUSD">0 $</span>
                 </div>
                 <div class="summary-row">
-                    <span class="summary-label">CHEGIRMA</span>
-                    <span class="summary-value" id="discount">0 so'm</span>
+                    <span class="summary-label">Yakuniy to'lov (UZS)</span>
+                    <span class="summary-value" id="totalPaymentUZS">0 so'm</span>
                 </div>
                 <div class="summary-row total">
-                    <span class="summary-label">JAMI MAXSULOTLAR</span>
+                    <span class="summary-label">Jami mahsulotlar</span>
                     <span class="summary-value total" id="totalProducts">0 ta</span>
                 </div>
             </div>
@@ -1160,10 +1206,10 @@
     </div>
 </div>
 
-<!-- Customer Modal -->
+<!-- Customer Modal (mijoz ixtiyoriy — kiritmasa mijozsiz sotuv) -->
 <div id="customerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
     <div style="background: white; padding: 30px; border-radius: 10px; max-width: 500px; width: 90%; position: relative;">
-        <h3 style="margin-top: 0; margin-bottom: 20px;">Mijoz ma'lumotlari</h3>
+        <h3 style="margin-top: 0; margin-bottom: 20px;">Mijoz ma'lumotlari <span style="font-size: 13px; font-weight: normal; color: #64748b;">(ixtiyoriy)</span></h3>
         <div style="margin-bottom: 15px;">
             <label style="display: block; margin-bottom: 5px; font-weight: 600;">Mijoz nomi:</label>
             <div style="position: relative;">
@@ -1180,7 +1226,7 @@
         </div>
         <div style="display: flex; gap: 10px; justify-content: flex-end;">
             <button onclick="closeCustomerModal()" style="padding: 10px 20px; background: #e5e7eb; border: none; border-radius: 5px; cursor: pointer;">Bekor qilish</button>
-            <button onclick="confirmCustomer()" style="padding: 10px 20px; background: #16a34a; color: white; border: none; border-radius: 5px; cursor: pointer;">Tasdiqlash</button>
+            <button onclick="confirmCustomer()" style="padding: 10px 20px; background: #16a34a; color: white; border: none; border-radius: 5px; cursor: pointer;">Yakunlash</button>
         </div>
     </div>
 </div>
@@ -1226,6 +1272,19 @@
     </div>
 </div>
 
+<!-- Modal: mahsulot qo'shish (create_product iframe) -->
+<div id="addProductModalOverlay" class="no-print" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 12px; width: 95%; max-width: 900px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+        <div style="padding: 14px 18px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 18px; font-weight: 700;">Mahsulot qo'shish</h3>
+            <button type="button" onclick="closeAddProductModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #6b7280; line-height: 1;">&times;</button>
+        </div>
+        <div style="flex: 1; min-height: 0;">
+            <iframe id="addProductModalIframe" src="about:blank" style="width: 100%; height: 75vh; border: none;"></iframe>
+        </div>
+    </div>
+</div>
+
 <!-- Chiroyli alert modal (qolmagan, savat bo'sh, sotuv natija) -->
 <div id="appAlertOverlay" class="no-print">
     <div class="app-alert-box" id="appAlertBox">
@@ -1257,7 +1316,8 @@
     let selectedPaymentMethod = 'cash';
     let mixedPayment = { cash_usd: 0, card_usd: 0, cash_uzs: 0, card_uzs: 0, is_set: false, input_currency: 'usd' };
     let mixedModalCurrency = 'usd';
-    let discount = 0;
+    let discount = 0; // chegirma so'mda (hisob-kitob uchun)
+    let discountPercent = 0; // chegirma foizda
     let searchAutocompleteTimeout;
     let searchSelectedIndex = -1;
     let searchSuggestions = [];
@@ -1324,6 +1384,46 @@
     {% endif %}
     
     console.log('Top products loaded:', topProducts);
+
+    // Modal: mahsulot qo'shish (create_product iframe) — to'liq URL port bilan yuklanishi uchun
+    function openAddProductModal() {
+        var overlay = document.getElementById('addProductModalOverlay');
+        var iframe = document.getElementById('addProductModalIframe');
+        if (overlay && iframe) {
+            var path = "{% url 'store:create_product' %}?return_sale=1";
+            iframe.src = window.location.origin + path;
+            overlay.style.display = 'flex';
+        }
+    }
+    function closeAddProductModal() {
+        var overlay = document.getElementById('addProductModalOverlay');
+        var iframe = document.getElementById('addProductModalIframe');
+        if (overlay && iframe) {
+            overlay.style.display = 'none';
+            iframe.src = 'about:blank';
+        }
+    }
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' || e.keyCode === 27) {
+            var overlay = document.getElementById('addProductModalOverlay');
+            if (overlay && overlay.style.display === 'flex') closeAddProductModal();
+        }
+    });
+    window.addEventListener('message', function(e) {
+        if (e.data && e.data.type === 'close_add_product_modal') {
+            closeAddProductModal();
+            return;
+        }
+        if (e.data && e.data.type === 'product_created_for_sale' && e.data.variant_id) {
+            closeAddProductModal();
+            var d = e.data;
+            if (d.variant_name != null && d.price != null && d.stock != null) {
+                addProductToCart(parseInt(d.variant_id, 10), d.variant_name, parseFloat(d.price), parseInt(d.stock, 10), d.unit || 'dona');
+            } else {
+                addProductToCartById(parseInt(d.variant_id, 10));
+            }
+        }
+    });
 
     // Auto-add product to cart if product_id is in query params (product_id == variant.id)
     (function autoAddProductFromQuery() {
@@ -1431,6 +1531,7 @@
                 variant_name: p.variant_name || p.name,
                 price: parseFloat(p.price),
                 stock: parseInt(p.stock) || 0,
+                unlimited_stock: !!p.unlimited_stock,
                 unit: p.unit || 'dona',
             });
         });
@@ -1443,23 +1544,28 @@
         const listEl = document.getElementById('variantModalList');
         if (!modal || !nameEl || !listEl) return;
         nameEl.textContent = productName;
-        const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
+        const usdRate = getUsdRateValue();
         const unitLabel = (u) => (u === 'metr' ? 'Metr' : 'Dona');
         // Narx har doim USD da ko'rsatiladi: agar qiymat so'm bo'lsa (>100) USD ga o'giramiz (qidiruv so'm qaytaradi)
         listEl.innerHTML = variants.map(v => {
             const rawStock = Math.max(0, parseInt(v.stock, 10) || 0);
+            const unlimited = !!v.unlimited_stock;
             const inCart = cart.find(item => item.product_id === v.id);
             const qtyInCart = inCart ? inCart.quantity : 0;
-            const remaining = Math.max(0, rawStock - qtyInCart);
+            const remaining = unlimited ? Infinity : Math.max(0, rawStock - qtyInCart);
             let priceUsd = parseFloat(v.price) || 0;
             if (priceUsd > 100) priceUsd = priceUsd / usdRate;
             const priceUSD = priceUsd.toFixed(2);
             const soom = priceUsd * usdRate;
             const u = v.unit || 'dona';
-            const isOut = remaining <= 0;
-            const stockText = isOut ? '<span style="color: #b91c1c; font-weight: 600;">0 ' + unitLabel(u) + ' (qolmagan)</span>' : ('Qolgan: ' + remaining + ' ' + unitLabel(u));
+            const isOut = !unlimited && remaining <= 0;
+            const stockText = unlimited
+                ? 'Cheklanmagan'
+                : (isOut
+                    ? '<span style="color: #b91c1c; font-weight: 600;">0 ' + unitLabel(u) + ' (qolmagan)</span>'
+                    : ('Qolgan: ' + remaining + ' ' + unitLabel(u)));
             return `
-                <button type="button" class="quick-product-btn ${isOut ? 'quick-product-out-of-stock' : ''}" style="text-align: left; width: 100%;" data-variant-id="${v.id}" data-variant-name="${v.variant_name}" data-variant-price="${priceUSD}" data-variant-stock="${rawStock}" data-variant-unit="${u}">
+                <button type="button" class="quick-product-btn ${isOut ? 'quick-product-out-of-stock' : ''}" style="text-align: left; width: 100%;" data-variant-id="${v.id}" data-variant-name="${v.variant_name}" data-variant-price="${priceUSD}" data-variant-stock="${unlimited ? 999999 : rawStock}" data-variant-unit="${u}">
                     <div class="quick-product-name">${v.variant_name}</div>
                     <div class="quick-product-details">${priceUSD}$ (${formatSoomDot(soom)} so'm) | ${stockText}</div>
                 </button>
@@ -1517,11 +1623,16 @@
                 const soom = priceUsd * USD_RATE;
                 const u = v.unit || 'dona';
                 const rawStock = parseInt(v.stock, 10) || 0;
-                const effectiveStock = Math.max(0, rawStock);
-                const isOut = effectiveStock <= 0;
-                const stockText = isOut ? '<span style="color: #b91c1c; font-weight: 600;">0 ' + unitLabel(u) + ' (qolmagan)</span>' : (effectiveStock + ' ' + unitLabel(u));
+                const unlimited = !!v.unlimited_stock;
+                const effectiveStock = unlimited ? Infinity : Math.max(0, rawStock);
+                const isOut = !unlimited && effectiveStock <= 0;
+                const stockText = unlimited
+                    ? 'Cheklanmagan'
+                    : (isOut
+                        ? '<span style="color: #b91c1c; font-weight: 600;">0 ' + unitLabel(u) + ' (qolmagan)</span>'
+                        : (effectiveStock + ' ' + unitLabel(u)));
                 htmlParts.push(`
-                    <div class="quick-product-btn ${isOut ? 'quick-product-out-of-stock' : ''}" data-variant-id="${v.id}" data-variant-name="${v.variant_name}" data-variant-price="${priceUSD}" data-variant-stock="${effectiveStock}" data-original-stock="${rawStock}" data-variant-unit="${u}">
+                    <div class="quick-product-btn ${isOut ? 'quick-product-out-of-stock' : ''}" data-variant-id="${v.id}" data-variant-name="${v.variant_name}" data-variant-price="${priceUSD}" data-variant-stock="${unlimited ? 999999 : effectiveStock}" data-original-stock="${rawStock}" data-variant-unit="${u}">
                         <div class="quick-product-name">${v.variant_name}</div>
                         <div class="quick-product-details">${priceUSD}$ (${formatSoomDot(soom)} so'm) | ${stockText}</div>
                     </div>
@@ -1571,14 +1682,17 @@
             const u = (group.variants[0] && (group.variants[0].unit || 'dona')) || 'dona';
             const v0 = group.variants[0];
             const stock0 = v0.stock || 0;
-            const stockSuffix = stock0 === 0 ? ' | 0 ' + unitLabel(u) + ' (qolmagan)' : ' | ' + unitLabel(u);
+            const unlimited0 = !!v0.unlimited_stock;
+            const stockSuffix = unlimited0
+                ? ' | Cheklanmagan'
+                : (stock0 === 0 ? ' | 0 ' + unitLabel(u) + ' (qolmagan)' : ' | ' + unitLabel(u));
             const priceSoom = parseFloat(v0.price);
             const priceUSD = (priceSoom / usdRateSearch).toFixed(2);
             const label = group.variants.length === 1
                 ? `${v0.variant_name} | ${priceUSD}$ (${formatSoomDot(priceSoom)} so'm)${stockSuffix}`
                 : `${productName} — ${group.variants.length} rang | ${unitLabel(u)}`;
-            const allOut = group.variants.every(v => (v.stock || 0) <= 0);
-            const outClass = (group.variants.length === 1 && stock0 === 0) || allOut ? ' autocomplete-item-out' : '';
+            const allOut = group.variants.every(v => !v.unlimited_stock && (v.stock || 0) <= 0);
+            const outClass = (group.variants.length === 1 && !unlimited0 && stock0 === 0) || allOut ? ' autocomplete-item-out' : '';
             return `
             <div class="autocomplete-item${outClass}" data-index="${index}">
                 <div class="autocomplete-item-name">${productName}</div>
@@ -1621,7 +1735,7 @@
         searchSuggestionsContainer.classList.remove('show');
         const variantId = typeof product.id === 'string' ? parseInt(product.id) : product.id;
         const displayName = product.variant_name || product.name;
-        const stock = parseInt(product.stock);
+        const stock = product.unlimited_stock ? 999999 : parseInt(product.stock);
         const unit = product.unit || 'dona';
         addProductToCartWithCurrentPrice(variantId, displayName, stock, unit);
     }
@@ -1647,7 +1761,7 @@
                 e.preventDefault();
                 const variantId = parseInt(btn.getAttribute('data-variant-id'));
                 const variantName = btn.getAttribute('data-variant-name') || '';
-                const variantStock = parseInt(btn.getAttribute('data-original-stock') || btn.getAttribute('data-variant-stock')) || 0;
+                const variantStock = parseInt(btn.getAttribute('data-variant-stock')) || 0;
                 const variantUnit = btn.getAttribute('data-variant-unit') || 'dona';
                 if (variantStock <= 0) {
                     showAppAlert('Mahsulot qolmagan', 'Bu mahsulot qolmagan. Korzinkaga qo\'shib bo\'lmaydi.', 'warning');
@@ -1740,12 +1854,13 @@
         const tbody = document.getElementById('orderTableBody');
         const orderSummary = document.getElementById('orderSummary');
         const cartClearBar = document.getElementById('cartClearBar');
-        const cartClearBarMobile = document.getElementById('cartClearBarMobile');
+        const cartClearBarMobileBtn = document.getElementById('cartClearBarMobileBtn');
+        var addProductRowHtml = '<tr class="add-product-row no-print"><td colspan="6" style="text-align: center; padding: 10px;"><button type="button" class="btn-add-product-inline" onclick="openAddProductModal()" title="Yangi mahsulot qo\'shish"><i class="bi bi-plus-lg"></i> Mahsulot qo\'shish</button></td></tr>';
         
         if (cart.length === 0) {
             if (cartClearBar) cartClearBar.style.display = 'none';
-            if (cartClearBarMobile) cartClearBarMobile.style.display = 'none';
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #9ca3af;">Savat bo\'sh</td></tr>';
+            if (cartClearBarMobileBtn) cartClearBarMobileBtn.style.display = 'none';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #9ca3af;">Savat bo\'sh</td></tr>' + addProductRowHtml;
             var mobileEl = document.getElementById('orderTableBodyMobile');
             if (mobileEl) {
                 mobileEl.innerHTML = '<div class="mobile-cart-empty">Savat bo\'sh</div>';
@@ -1759,7 +1874,7 @@
         }
         
         if (cartClearBar) cartClearBar.style.display = 'inline-flex';
-        if (cartClearBarMobile) cartClearBarMobile.style.display = 'block';
+        if (cartClearBarMobileBtn) cartClearBarMobileBtn.style.display = 'inline-flex';
         
         let html = '';
         const usdRate = parseFloat(document.getElementById('usdRate').value) || 12500;
@@ -1811,8 +1926,7 @@
                 </tr>
             `;
         });
-        
-        tbody.innerHTML = html;
+        tbody.innerHTML = html + addProductRowHtml;
         var mobileEl = document.getElementById('orderTableBodyMobile');
         if (mobileEl) {
             if (cart.length === 0) {
@@ -1845,19 +1959,35 @@
     function updateSummary() {
         let totalUSD = 0;
         let totalItems = 0;
-        const usdRate = parseFloat(document.getElementById('usdRate').value) || 12500;
+        const usdRate = getUsdRateValue();
         
         cart.forEach(item => {
             totalUSD += item.price * item.quantity;
             totalItems += item.quantity;
         });
         
-        // totalPaymentUSD = dollarda (o'zgarmaydi). totalPaymentUZS = dollar * kurs (kurs o'zgarganda shu yangilanadi)
-        const totalSoom = totalUSD * usdRate - discount;
+        const subtotalUSD = totalUSD;
+        const subtotalUZS = subtotalUSD * usdRate;
         
-        document.getElementById('totalPaymentUSD').textContent = '$' + totalUSD.toFixed(2);
-        document.getElementById('totalPaymentUZS').textContent = formatSoomDot(totalSoom) + ' so\'m';
-        document.getElementById('discount').textContent = formatSoomDot(discount) + ' so\'m';
+        // Chegirma — foizga qarab so'mda qayta hisoblaymiz
+        if (discountPercent > 0 && subtotalUZS > 0) {
+            discount = Math.round(subtotalUZS * (discountPercent / 100));
+        } else {
+            discount = 0;
+        }
+        
+        let totalSoom = subtotalUZS - discount;
+        if (totalSoom < 0) totalSoom = 0;
+        const totalUSDdiscounted = totalSoom / usdRate;
+        
+        document.getElementById('subtotalUSD').textContent = '$' + subtotalUSD.toFixed(2);
+        document.getElementById('subtotalUZS').textContent = formatSoomDot(subtotalUZS) + " so'm";
+        const discountLabel = discountPercent > 0
+            ? formatSoomDot(discount) + " so'm (" + discountPercent.toFixed(2) + "%)"
+            : "0 so'm";
+        document.getElementById('discount').textContent = discountLabel;
+        document.getElementById('totalPaymentUSD').textContent = '$' + totalUSDdiscounted.toFixed(2);
+        document.getElementById('totalPaymentUZS').textContent = formatSoomDot(totalSoom) + " so'm";
         document.getElementById('totalProducts').textContent = totalItems + ' ta';
     }
     
@@ -1955,15 +2085,16 @@
         const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
         quickProductButtons.forEach(btn => {
             const variantId = parseInt(btn.getAttribute('data-variant-id'));
-            const originalStock = parseInt(btn.getAttribute('data-original-stock'), 10) || parseInt(btn.getAttribute('data-variant-stock'), 10) || 0;
+            const unlimited = btn.getAttribute('data-variant-stock') === '999999';
+            const originalStock = unlimited ? 999999 : (parseInt(btn.getAttribute('data-original-stock'), 10) || parseInt(btn.getAttribute('data-variant-stock'), 10) || 0);
             const effectiveOriginal = Math.max(0, originalStock);
             const cartItem = cart.find(item => item.product_id === variantId);
             const quantityInCart = cartItem ? cartItem.quantity : 0;
-            const remainingStock = Math.max(0, effectiveOriginal - quantityInCart);
+            const remainingStock = unlimited ? 999999 : Math.max(0, effectiveOriginal - quantityInCart);
             const detailsEl = btn.querySelector('.quick-product-details');
             const unit = btn.getAttribute('data-variant-unit') || 'dona';
             const unitLabel = unit === 'metr' ? 'Metr' : 'Dona';
-            if (remainingStock <= 0) {
+            if (!unlimited && remainingStock <= 0) {
                 btn.classList.add('quick-product-out-of-stock');
                 if (detailsEl) {
                     const priceUsd = parseFloat(btn.getAttribute('data-variant-price')) || 0;
@@ -1977,9 +2108,14 @@
                     const priceUsd = parseFloat(btn.getAttribute('data-variant-price')) || 0;
                     const priceUSD = priceUsd.toFixed(2);
                     const soom = priceUsd * usdRate;
-                    detailsEl.textContent = `${priceUSD}$ (${formatSoomDot(soom)} so'm) | ${remainingStock} ${unitLabel}`;
-                    detailsEl.style.color = '';
-                    if (remainingStock <= 5) detailsEl.style.color = '#f59e0b';
+                    if (unlimited) {
+                        detailsEl.textContent = `${priceUSD}$ (${formatSoomDot(soom)} so'm) | Cheklanmagan`;
+                        detailsEl.style.color = '';
+                    } else {
+                        detailsEl.textContent = `${priceUSD}$ (${formatSoomDot(soom)} so'm) | ${remainingStock} ${unitLabel}`;
+                        detailsEl.style.color = '';
+                        if (remainingStock <= 5) detailsEl.style.color = '#f59e0b';
+                    }
                 }
             }
         });
@@ -2237,11 +2373,22 @@
     }
     
     function applyDiscount() {
-        const amount = prompt('Chegirma miqdorini kiriting (so\'m):');
-        if (amount) {
-            discount = parseFloat(amount) || 0;
-            updateSummary();
+        if (!cart || cart.length === 0) {
+            alert("Savat bo'sh. Avval mahsulot qo'shing.");
+            return;
         }
+        const input = prompt("Chegirma foizini kiriting (masalan 5 yoki 0.5):");
+        if (input === null) return; // bekor qildi
+        const normalized = String(input).replace(',', '.').trim();
+        const percent = parseFloat(normalized);
+        if (isNaN(percent) || percent < 0) {
+            alert("Noto'g'ri foiz kiritildi.");
+            return;
+        }
+        // Juda katta foizni cheklaymiz
+        const safePercent = Math.min(percent, 99.99);
+        discountPercent = safePercent;
+        updateSummary();
     }
     
     // Actions — bitta tasdiq, savat to‘g‘ridan tozalanadi (clearCart ikki marta confirm qilmasin)
@@ -2249,6 +2396,7 @@
         if (confirm('Chekni bekor qilishni tasdiqlaysizmi?')) {
             cart = [];
             discount = 0;
+            discountPercent = 0;
             updateOrderTable();
         }
     }
@@ -2359,12 +2507,6 @@
         const phoneEl = document.getElementById('customerPhoneInput');
         const customerName = nameEl ? nameEl.value.trim() : '';
         const customerPhone = phoneEl ? phoneEl.value.trim() : '';
-        
-        if (!customerName) {
-            showAppAlert('Mijoz nomi shart', 'Mijoz nomini kiriting!', 'warning');
-            return;
-        }
-        
         closeCustomerModal();
         proceedWithOrder(customerName, customerPhone).catch(function(err) {
             console.error('Sotuv yuborishda xatolik:', err);
@@ -2385,7 +2527,7 @@
     }
     
     async function proceedWithOrder(customerName, customerPhone) {
-        const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
+        const usdRate = getUsdRateValue();
         const totalUSD = getTotalUSDValue();
         const data = {
             customer_name: customerName,
@@ -2394,6 +2536,7 @@
             usd_rate: usdRate,
             payment_cash_usd: selectedPaymentMethod === 'mixed' ? mixedPayment.cash_usd : (selectedPaymentMethod === 'cash' ? totalUSD : 0),
             payment_card_usd: selectedPaymentMethod === 'mixed' ? mixedPayment.card_usd : (selectedPaymentMethod === 'card' ? totalUSD : 0),
+            discount_percent: discountPercent,
             items: cart.map(item => ({
                 product_id: item.product_id,
                 quantity: item.quantity,
@@ -2442,6 +2585,7 @@
             if (result.success) {
                 cart = [];
                 discount = 0;
+                discountPercent = 0;
                 updateOrderTable();
                 let successText;
                 let redirectUrl;

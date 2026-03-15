@@ -42,9 +42,17 @@ class ExchangeRate(models.Model):
 
 
 class UserProfile(models.Model):
-    """Foydalanuvchi biriktirilgan market (admin bo'sh qoldirsa, keyin biriktiradi)"""
+    """Foydalanuvchi biriktirilgan market va roli"""
+    ROLE_MANAGER = 'manager'
+    ROLE_SELLER = 'seller'
+    ROLE_CHOICES = [
+        (ROLE_MANAGER, "Menejer"),
+        (ROLE_SELLER, "Sotuvchi"),
+    ]
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile', verbose_name="Foydalanuvchi")
     market = models.ForeignKey(Market, on_delete=models.SET_NULL, null=True, blank=True, related_name='users', verbose_name="Market")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_SELLER, verbose_name="Rol")
 
     class Meta:
         verbose_name = "Foydalanuvchi profili"
@@ -52,6 +60,10 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"{self.user.username} — {self.market.name if self.market else 'market tanlanmagan'}"
+
+    @property
+    def is_manager(self) -> bool:
+        return self.role == self.ROLE_MANAGER
 
 
 class Category(models.Model):
@@ -154,6 +166,7 @@ class ProductVariant(models.Model):
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0'))], verbose_name="Kirib kelish narxi", default=Decimal('0.00'))
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))], verbose_name="Sotish narxi")
     stock_quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)], verbose_name="Ombordagi miqdor")
+    unlimited_stock = models.BooleanField(default=False, verbose_name="Cheklanmagan zaxira")
     image = models.ImageField(upload_to='products/variants/', blank=True, null=True, verbose_name="Variant rasm")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -241,10 +254,12 @@ class Sale(models.Model):
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Mijoz")
     sale_date = models.DateTimeField(auto_now_add=True, verbose_name="Sotish sanasi")
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Jami summa (USD)")
+    original_total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Chegirmasiz jami (USD)")
     usd_rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="Dollar kursi (so'm)")
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='cash', verbose_name="To'lov usuli")
     payment_cash_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Naqd (USD)")
     payment_card_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Karta (USD)")
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="Chegirma (%)")
     notes = models.TextField(blank=True, verbose_name="Izohlar")
     created_by = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, verbose_name="Yaratgan")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='completed', verbose_name="Holati")

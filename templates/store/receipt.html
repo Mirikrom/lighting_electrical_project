@@ -6,114 +6,135 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chek #{{ sale.id }}</title>
     <style>
+        /* 80mm POS/termo printer uchun */
         @media print {
-            body { margin: 0; }
-            .no-print { display: none; }
-            @page { margin: 1cm; }
+            body, html { margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+            @page { size: 80mm auto; margin: 2mm 3mm; }
+            body { width: 72mm !important; max-width: 72mm !important; margin: 0 auto !important; padding: 0 2mm !important; }
+            #receipt-content { width: 72mm !important; max-width: 72mm !important; padding: 0 !important; }
+            .header h1 { font-size: 14pt !important; }
+            .header p, .info p, .item, .total, .footer p { font-size: 10pt !important; }
+            .item-parametrlar { font-size: 9pt !important; }
+            .total { font-size: 11pt !important; }
         }
         
         body {
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 12px;
             font-weight: 600;
-            max-width: 300px;
+            width: 72mm;
+            max-width: 72mm;
             margin: 20px auto;
-            padding: 20px;
+            padding: 10px 5px;
             background: white;
+            box-sizing: border-box;
         }
         
         .header {
             text-align: center;
-            border-bottom: 2px dashed #000;
-            padding-bottom: 15px;
-            margin-bottom: 15px;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 8px;
+            margin-bottom: 8px;
         }
         
         .header h1 {
-            font-size: 22px;
+            font-size: 16px;
             margin: 0;
             font-weight: bold;
+            line-height: 1.2;
         }
         
         .header p {
-            margin: 5px 0;
-            font-size: 14px;
+            margin: 2px 0;
+            font-size: 11px;
             font-weight: 600;
         }
         
         .info {
-            margin: 10px 0;
-            font-size: 14px;
+            margin: 6px 0;
+            font-size: 11px;
             font-weight: 600;
         }
+        
+        .info p { margin: 2px 0; }
         
         .items {
             border-top: 1px dashed #000;
             border-bottom: 1px dashed #000;
-            padding: 10px 0;
-            margin: 15px 0;
+            padding: 6px 0;
+            margin: 8px 0;
         }
         
         .item-block {
-            margin: 8px 0;
+            margin: 4px 0;
         }
         
         .item {
             display: flex;
             justify-content: space-between;
-            font-size: 14px;
+            align-items: flex-start;
+            font-size: 11px;
             font-weight: 600;
+            gap: 4px;
         }
         
         .item-name {
             flex: 1;
-            margin-right: 10px;
+            min-width: 0;
+            word-break: break-word;
         }
         
         .item-parametrlar {
-            font-size: 12px;
+            font-size: 10px;
             font-weight: 600;
             color: #333;
-            margin-top: 2px;
+            margin-top: 1px;
             margin-left: 0;
             padding-left: 0;
         }
         
-        .item-qty {
-            margin: 0 5px;
+        .item-qty-unit {
+            flex-shrink: 0;
+            margin: 0 6px;
+            white-space: nowrap;
         }
         
         .item-price {
             text-align: right;
-            min-width: 60px;
+            flex-shrink: 0;
+            min-width: 42px;
         }
         
         .total {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            font-size: 17px;
+            font-size: 12px;
             font-weight: bold;
-            margin-top: 15px;
-            padding-top: 10px;
+            margin-top: 8px;
+            padding-top: 6px;
             border-top: 2px solid #000;
-            line-height: 1.5;
+            line-height: 1.4;
         }
         .total-label {
             font-weight: bold;
         }
         .total-amounts {
             text-align: right;
+            font-size: 11px;
         }
         
         .footer {
             text-align: center;
-            margin-top: 20px;
-            padding-top: 15px;
+            margin-top: 10px;
+            padding-top: 8px;
             border-top: 1px dashed #000;
-            font-size: 13px;
+            font-size: 10px;
             font-weight: 600;
         }
+        
+        .footer p { margin: 2px 0; }
         
         .action-buttons {
             display: flex;
@@ -165,8 +186,10 @@
         
         #receipt-content {
             background: white;
-            padding: 15px;
+            padding: 8px 2px;
             box-sizing: border-box;
+            width: 72mm;
+            max-width: 72mm;
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
@@ -207,7 +230,7 @@
         <div class="item-block">
             <div class="item">
                 <div class="item-name">{{ item.product.name }}</div>
-                <div class="item-qty">{{ item.quantity }}{% if item.product.unit == 'metr' %} M{% else %}x{% endif %}</div>
+                <div class="item-qty-unit">{{ item.quantity }}{% if item.product.unit == 'metr' %} m {% endif %}× ${{ item.unit_price|floatformat:2|comma_to_dot }}</div>
                 <div class="item-price">${{ item.subtotal|floatformat:2|comma_to_dot }}</div>
             </div>
             {% if item.variant %}
@@ -223,7 +246,21 @@
     
     <div class="total">
         <span class="total-label">JAMI:</span>
-        <span class="total-amounts">${{ total_usd_formatted }}<br>{{ total_soom_formatted }} so'm</span>
+        <span class="total-amounts">
+            {% if original_total_applied %}
+                Umumiy summa ($): ${{ original_total_usd_formatted }}<br>
+                Umumiy summa (UZS): {{ original_total_soom_formatted }} so'm<br>
+                Chegirma: {% if discount_percent_display %}{{ discount_percent_display }}% — {% endif %}${{ discount_usd_formatted }} ({{ discount_soom_formatted }} so'm)<br>
+                Yakuniy to'lov ($): ${{ total_usd_formatted }}<br>
+                Yakuniy to'lov (UZS): {{ total_soom_formatted }} so'm
+            {% else %}
+                Umumiy summa ($): ${{ total_usd_formatted }}<br>
+                Umumiy summa (UZS): {{ total_soom_formatted }} so'm<br>
+                Chegirma: 0 so'm<br>
+                Yakuniy to'lov ($): ${{ total_usd_formatted }}<br>
+                Yakuniy to'lov (UZS): {{ total_soom_formatted }} so'm
+            {% endif %}
+        </span>
     </div>
     
     <div class="footer">

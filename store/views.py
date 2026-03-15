@@ -9,13 +9,14 @@ from django.db.models import Q, Sum, Count, Prefetch
 from django.http import JsonResponse, HttpResponse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.conf import settings
 from django.urls import reverse_lazy
 from .models import Product, Category, Sale, SaleItem, Customer, ProductVariant, Attribute, AttributeValue, Market, UserProfile, ExchangeRate
 from .forms import RegisterForm
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 import json
 import logging
@@ -24,6 +25,21 @@ import uuid
 logger = logging.getLogger('store')
 
 DEFAULT_USD_RATE = Decimal('12500')
+
+
+def _render_product_created_for_sale(request, variant):
+    """Sotish sahifasidan modal orqali mahsulot qo'shilganda: redirect o'rniga postMessage uchun sahifa."""
+    name = getattr(variant.product, 'name', '') or str(variant)
+    price = str(variant.price)
+    unit = getattr(variant.product, 'unit', None) or 'dona'
+    stock = 999999 if getattr(variant, 'unlimited_stock', False) else getattr(variant, 'stock_quantity', 0)
+    return render(request, 'store/product_created_for_sale.html', {
+        'variant_id': variant.id,
+        'variant_name': name,
+        'price': price,
+        'unit': unit,
+        'stock': stock,
+    })
 
 
 def get_current_usd_rate(market):
@@ -48,6 +64,16 @@ def get_request_market(request):
     if not hasattr(request.user, 'profile'):
         return None
     return getattr(request.user.profile, 'market', None)
+
+
+def user_is_manager(user) -> bool:
+    """Foydalanuvchi menejer (yoki superuser/staff) ekanini tekshiradi."""
+    if not user.is_authenticated:
+        return False
+    if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
+        return True
+    profile = getattr(user, 'profile', None)
+    return bool(profile and getattr(profile, 'is_manager', False))
 
 
 def require_market(view_func):
@@ -91,7 +117,9 @@ def register_view(request):
             profile = user.profile  # signal tomonidan yaratilgan
             if market:
                 profile.market = market
-                profile.save()
+                # Yangi market yaratgan foydalanuvchini avtomatik ravishda manager qilamiz
+                profile.role = profile.ROLE_MANAGER
+            profile.save()
             # Log in qilmaymiz — admin tasdiqlagach login qiladi
             messages.success(
                 request,
@@ -328,9 +356,32 @@ def delete_product(request, pk):
             return redirect('store:product_list_old')
 
 
+def _create_product_form_data(post):
+    """Validatsiya xatosi bo'lganda formani to'ldirish uchun POST dan ma'lumot."""
+    return {
+        'name': post.get('name', ''),
+        'category': post.get('category', ''),
+        'new_category': post.get('new_category', ''),
+        'color': post.get('color', ''),
+        'new_color': post.get('new_color', ''),
+        'unit': post.get('unit', 'dona'),
+        'sku': post.get('sku', ''),
+        'price': post.get('price', ''),
+        'price_currency': post.get('price_currency', 'USD'),
+        'stock_quantity': post.get('stock_quantity', ''),
+        'unlimited_stock': post.get('unlimited_stock') == 'on',
+        'quantity_received': post.get('quantity_received', ''),
+        'existing_product_id': post.get('existing_product_id', ''),
+        'edit_variant_id': post.get('edit_variant_id', ''),
+        'description': post.get('description', ''),
+        'parametr': post.getlist('parametr'),
+    }
+
+
 @require_market
+@xframe_options_sameorigin
 def create_product(request):
-    """Yangi mahsulot qo'shish (yoki mavjud mahsulotni o'zgartirish / yangi variant qo'shish)"""
+    """Yangi mahsulot qo'shish (yoki mavjud mahsulotni o'zgartirish / yangi variant qo'shish). iframe da (sotish sahifasidan) ochilishi uchun SAMEORIGIN."""
     market = get_request_market(request)
     categories = Category.objects.filter(market=market)
     # Get unique colors from existing variants (all categories)
@@ -339,6 +390,7 @@ def create_product(request):
         colors = AttributeValue.objects.filter(attribute=color_attr).values_list('value', flat=True).distinct().order_by('value')
     else:
         colors = []
+    return_sale_param = request.GET.get('return_sale') or request.POST.get('return_sale')
     
     initial_product = None
     if request.method == 'GET':
@@ -371,6 +423,7 @@ def create_product(request):
                             'price_usd': round(float(v.price), 2),
                             'cost_price_usd': round(float(v.cost_price or 0), 2),
                             'stock_quantity': max(0, int(v.stock_quantity)),
+                            'unlimited_stock': getattr(v, 'unlimited_stock', False),
                             'unit': getattr(v.product, 'unit', 'dona'),
                         }
             except (Product.DoesNotExist, ValueError):
@@ -380,18 +433,50 @@ def create_product(request):
         try:
             edit_variant_id = request.POST.get('edit_variant_id', '').strip()
             if edit_variant_id:
-                # Variantni yangilash (rang, narx, tannarx, miqdor, rasm)
+                # Variantni va Productni yangilash (nom, kategoriya, birlik, tavsif, rang, narx, miqdor, cheklanmagan, rasm)
                 try:
                     vid = int(edit_variant_id)
-                    variant = ProductVariant.objects.get(
+                    variant = ProductVariant.objects.select_related('product').get(
                         pk=vid, is_active=True, product__category__market=market
                     )
+                    product = variant.product
                     usd_rate = get_current_usd_rate(market)
+                    # Product (umumiy) maydonlari — barcha variantlar uchun bir xil
+                    name = request.POST.get('name', '').strip()
+                    category_id = request.POST.get('category')
+                    new_category_name = request.POST.get('new_category', '').strip()
+                    unit = request.POST.get('unit', 'dona')
+                    description = request.POST.get('description', '')
+                    if name:
+                        product.name = name
+                    if unit in ('dona', 'metr'):
+                        product.unit = unit
+                    if description is not None:
+                        product.description = description or ''
+                    if new_category_name:
+                        category, _ = Category.objects.get_or_create(
+                            market=market, name=new_category_name, defaults={'description': ''}
+                        )
+                        product.category = category
+                    elif category_id:
+                        try:
+                            product.category = Category.objects.get(pk=category_id, market=market)
+                        except Category.DoesNotExist:
+                            pass
+                    product.save(update_fields=['name', 'category', 'unit', 'description'])
+                    # Variant maydonlari
                     price = request.POST.get('price')
                     price_currency = request.POST.get('price_currency', 'USD')
                     cost_price = request.POST.get('cost_price', 0)
                     cost_currency = request.POST.get('cost_currency', 'USD')
-                    stock_quantity = request.POST.get('stock_quantity', 0)
+                    stock_quantity = request.POST.get('stock_quantity', '').strip()
+                    unlimited_stock_edit = (request.POST.get('unlimited_stock') == 'on')
+                    if not unlimited_stock_edit and (not stock_quantity or int(stock_quantity or 0) < 1):
+                        messages.error(request, 'Iltimos sonini kiriting yoki «Cheklanmagan» ni belgilang!')
+                        return render(request, 'store/create_product.html', {
+                            'categories': categories, 'colors': colors, 'return_sale': return_sale_param,
+                            'form_data': _create_product_form_data(request.POST), 'form_post_stock_error': True
+                        })
                     color = request.POST.get('color', '').strip()
                     new_color = request.POST.get('new_color', '').strip()
                     final_color = (new_color or color or '').strip()
@@ -438,16 +523,22 @@ def create_product(request):
                         if cost_currency == 'UZS':
                             c_val = c_val / Decimal(usd_rate)
                         variant.cost_price = c_val
-                    if stock_quantity is not None and str(stock_quantity).strip() != '':
+                    variant.unlimited_stock = unlimited_stock_edit
+                    if unlimited_stock_edit:
+                        # Cheklanmagan: miqdor hisobga olinmaydi
+                        pass
+                    elif stock_quantity is not None and str(stock_quantity).strip() != '':
                         variant.stock_quantity = max(0, int(float(stock_quantity)))
                     image = request.FILES.get('image')
                     if image:
                         variant.image = image
-                    update_fields = ['price', 'cost_price', 'stock_quantity']
+                    update_fields = ['price', 'cost_price', 'stock_quantity', 'unlimited_stock']
                     if image:
                         update_fields.append('image')
                     variant.save(update_fields=update_fields)
                     messages.success(request, f'Variant yangilandi: {variant.product.name}')
+                    if request.GET.get('return_sale') or request.POST.get('return_sale'):
+                        return _render_product_created_for_sale(request, variant)
                     return redirect('store:product_detail', pk=variant.pk)
                 except (ProductVariant.DoesNotExist, ValueError) as e:
                     logger.warning(f"Edit variant failed: {e}")
@@ -458,11 +549,14 @@ def create_product(request):
             new_category_name = request.POST.get('new_category', '').strip()
             color = request.POST.get('color', '').strip()
             new_color = request.POST.get('new_color', '').strip()
-            cost_price = request.POST.get('cost_price', 0)
-            cost_currency = request.POST.get('cost_currency', 'USD')
+            # Kirib kelish narxi hozircha ishlatilmaydi
+            cost_price = 0
+            cost_currency = 'USD'
             price = request.POST.get('price')
             price_currency = request.POST.get('price_currency', 'USD')
-            stock_quantity = request.POST.get('stock_quantity', 0)
+            raw_stock = (request.POST.get('stock_quantity', '') or '').strip()
+            stock_quantity = raw_stock or 0
+            unlimited_stock = (request.POST.get('unlimited_stock') == 'on')  # faqat checkbox belgilanganda cheklanmagan
             quantity_received = request.POST.get('quantity_received', 0)  # For existing products
             description = request.POST.get('description', '')
             sku = request.POST.get('sku', '')
@@ -471,7 +565,7 @@ def create_product(request):
             # Validation
             if not name:
                 messages.error(request, 'Mahsulot nomi kiritilishi shart!')
-                return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
+                return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors, 'return_sale': return_sale_param})
             
             # Check if product with same name already exists
             existing_product_id = request.POST.get('existing_product_id', '').strip()
@@ -515,11 +609,13 @@ def create_product(request):
                         new_quantity = int(quantity_received) if quantity_received else int(stock_quantity) if stock_quantity else 0
                         if new_quantity <= 0:
                             messages.error(request, 'Qancha kelgan sonini kiriting!')
-                            return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
+                            return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors, 'return_sale': return_sale_param})
                         existing_variant.stock_quantity = max(0, existing_variant.stock_quantity) + new_quantity
                         existing_variant.save()
                         logger.info(f"Variant stock updated: {existing_variant}, Added: {new_quantity}, New total: {existing_variant.stock_quantity}")
                         messages.success(request, f'Mahsulot soni yangilandi: {existing_variant} (+{new_quantity} dona, Jami: {existing_variant.stock_quantity} dona)')
+                        if request.GET.get('return_sale') or request.POST.get('return_sale'):
+                            return _render_product_created_for_sale(request, existing_variant)
                         return redirect('store:product_detail', pk=existing_variant.pk)
                     else:
                         # Yangi variant — narx bazada USD da saqlanadi
@@ -534,13 +630,16 @@ def create_product(request):
                             price_usd = first_variant.price
                         else:
                             messages.error(request, 'Sotish narxi kiritilishi shart!')
-                            return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
-                        if cost_price and str(cost_price).strip() and float(str(cost_price)) >= 0:
-                            if cost_currency == 'USD':
-                                cost_price_usd = Decimal(str(cost_price))
-                            else:
-                                cost_price_usd = Decimal(str(cost_price)) / Decimal(usd_rate)
-                        elif first_variant:
+                            return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors, 'return_sale': return_sale_param})
+                        # Yangi variant: miqdor yoki Cheklanmagan majburiy (0 bo'lmasin)
+                        if not unlimited_stock and (not stock_quantity or int(stock_quantity) < 1):
+                            messages.error(request, 'Iltimos sonini kiriting yoki «Cheklanmagan» ni belgilang!')
+                            return render(request, 'store/create_product.html', {
+                                'categories': categories, 'colors': colors, 'return_sale': return_sale_param,
+                                'form_data': _create_product_form_data(request.POST), 'form_post_stock_error': True
+                            })
+                        # Kirib kelish narxi vaqtincha 0 da saqlanadi
+                        if first_variant:
                             cost_price_usd = first_variant.cost_price
                         else:
                             cost_price_usd = Decimal('0')
@@ -551,6 +650,7 @@ def create_product(request):
                             cost_price=cost_price_usd,
                             price=price_usd,
                             stock_quantity=max(0, int(stock_quantity) if stock_quantity else int(quantity_received) if quantity_received else 0),
+                            unlimited_stock=unlimited_stock,
                             image=image
                         )
                         new_variant.save()
@@ -573,17 +673,19 @@ def create_product(request):
                         logger.info(f"New variant created: {new_variant} (SKU: {new_variant.sku})")
                         msg_suffix = f' ({final_color.upper()})' if final_color else ''
                         messages.success(request, f'Yangi variant muvaffaqiyatli qo\'shildi: {existing_product.name}{msg_suffix}')
+                        if request.GET.get('return_sale') or request.POST.get('return_sale'):
+                            return _render_product_created_for_sale(request, new_variant)
                         return redirect('store:product_detail', pk=new_variant.pk)
                         
                 except (Product.DoesNotExist, ProductVariant.DoesNotExist, ValueError) as e:
                     logger.error(f"Error with existing product: {str(e)}")
                     messages.error(request, 'Mahsulot topilmadi!')
-                    return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
+                    return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors, 'return_sale': return_sale_param})
             
             # Validate price before conversion
             if not price or price == '0' or price == '':
                 messages.error(request, 'Sotish narxi kiritilishi shart!')
-                return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
+                return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors, 'return_sale': return_sale_param})
             
             # Note: We allow products with the same name (e.g., "Led 20W oq" and "Led 20W sariq")
             # Each product will have a unique SKU based on ID
@@ -603,22 +705,17 @@ def create_product(request):
                     category = Category.objects.get(pk=category_id, market=market)
                 except Category.DoesNotExist:
                     messages.error(request, 'Noto\'g\'ri kategoriya!')
-                    return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
+                    return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors, 'return_sale': return_sale_param})
             else:
                 messages.error(request, 'Kategoriya tanlanishi yoki yangi kategoriya nomi kiritilishi shart!')
-                return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
+                return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors, 'return_sale': return_sale_param})
             
             # Narx bazada USD da saqlanadi — formadan USD yoki so'm ni USD ga o'tkazamiz
             usd_rate = get_current_usd_rate(market)
             try:
-                if cost_price and cost_price != '0' and cost_price != '':
-                    if cost_currency == 'USD':
-                        cost_price = Decimal(str(cost_price))
-                    else:
-                        cost_price = Decimal(str(cost_price)) / Decimal(usd_rate)
-                else:
-                    cost_price = Decimal('0')
-                
+                # Kirib kelish narxi vaqtincha 0
+                cost_price = Decimal('0')
+
                 if price_currency == 'USD':
                     price = Decimal(str(price))
                 else:
@@ -626,11 +723,11 @@ def create_product(request):
                 
                 if price < Decimal('0.01'):
                     messages.error(request, 'Sotish narxi 0.01 dan katta bo\'lishi kerak!')
-                    return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
+                    return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors, 'return_sale': return_sale_param})
             except (ValueError, TypeError, Exception) as e:
                 logger.error(f"Error converting price: {str(e)}")
                 messages.error(request, f'Narx noto\'g\'ri formatda kiritilgan!')
-                return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
+                return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors, 'return_sale': return_sale_param})
             
             # Handle color va parametrlar - Attribute/AttributeValue
             final_color = (new_color or color or '').strip()
@@ -662,6 +759,13 @@ def create_product(request):
             unit = request.POST.get('unit', 'dona')
             if unit not in ('dona', 'metr'):
                 unit = 'dona'
+            # Yangi mahsulot: miqdor yoki Cheklanmagan majburiy (0 bo'lmasin)
+            if not unlimited_stock and (not stock_quantity or int(stock_quantity) < 1):
+                messages.error(request, 'Iltimos sonini kiriting yoki «Cheklanmagan» ni belgilang!')
+                return render(request, 'store/create_product.html', {
+                    'categories': categories, 'colors': colors, 'return_sale': return_sale_param,
+                    'form_data': _create_product_form_data(request.POST), 'form_post_stock_error': True
+                })
             # Create Product (asosiy mahsulot)
             product = Product(
                 name=name,
@@ -684,6 +788,7 @@ def create_product(request):
                     cost_price=cost_price,
                     price=price,
                     stock_quantity=max(0, int(stock_quantity) if stock_quantity else 0),
+                    unlimited_stock=unlimited_stock,
                     image=image  # Variant uchun ham rasm
                 )
                 
@@ -695,11 +800,13 @@ def create_product(request):
                 
                 logger.info(f"ProductVariant created successfully: {variant} (SKU: {variant.sku}, ID: {variant.id})")
                 messages.success(request, f'Mahsulot muvaffaqiyatli qo\'shildi: {product.name}')
+                if request.GET.get('return_sale') or request.POST.get('return_sale'):
+                    return _render_product_created_for_sale(request, variant)
                 return redirect('store:product_detail', pk=variant.pk)
             except Exception as save_error:
                 logger.error(f"Error saving product: {str(save_error)}")
                 messages.error(request, f'Mahsulotni saqlashda xatolik: {str(save_error)}')
-                return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors})
+                return render(request, 'store/create_product.html', {'categories': categories, 'colors': colors, 'return_sale': return_sale_param})
             
         except Exception as e:
             logger.error(f"Error creating product: {str(e)}")
@@ -708,6 +815,7 @@ def create_product(request):
     context = {'categories': categories, 'colors': colors}
     if initial_product is not None:
         context['initial_product'] = initial_product
+    context['return_sale'] = return_sale_param
     return render(request, 'store/create_product.html', context)
 
 
@@ -791,9 +899,10 @@ def create_sale(request):
                 for item_data in items:
                     vid = int(item_data['product_id'])
                     quantity = int(item_data['quantity'])
-                    if variants_dict[vid].stock_quantity < quantity:
+                    variant = variants_dict[vid]
+                    if not getattr(variant, 'unlimited_stock', False) and variant.stock_quantity < quantity:
                         return JsonResponse({
-                            'error': f'{variants_dict[vid]} uchun yetarli mahsulot yo\'q (omborda: {variants_dict[vid].stock_quantity} dona)'
+                            'error': f'{variant} uchun yetarli mahsulot yo\'q (omborda: {variant.stock_quantity} dona)'
                         }, status=400)
                 
                 # Mijoz (shu market uchun)
@@ -841,9 +950,30 @@ def create_sale(request):
                         quantity=quantity,
                         unit_price=unit_price
                     )
-                    variant.stock_quantity = max(0, variant.stock_quantity - quantity)
-                    variant.save(update_fields=['stock_quantity'])
+                    if not getattr(variant, 'unlimited_stock', False):
+                        variant.stock_quantity = max(0, variant.stock_quantity - quantity)
+                        variant.save(update_fields=['stock_quantity'])
                     total += unit_price * quantity
+                
+                # Chegirma foizini hisobga olish (agar bo'lsa)
+                original_total = total
+                discount_percent_raw = data.get('discount_percent')
+                dp = Decimal('0')
+                if discount_percent_raw is not None and discount_percent_raw != '':
+                    try:
+                        dp = Decimal(str(discount_percent_raw))
+                    except (ValueError, TypeError, InvalidOperation):
+                        dp = Decimal('0')
+                if dp > 0:
+                    if dp >= Decimal('100'):
+                        dp = Decimal('99.99')
+                    factor = (Decimal('100') - dp) / Decimal('100')
+                    total = (total * factor).quantize(Decimal('0.01'))
+                    sale.discount_percent = dp
+                    sale.original_total_amount = original_total
+                else:
+                    sale.discount_percent = Decimal('0')
+                    sale.original_total_amount = original_total
                 
                 sale.total_amount = total
                 # To'lov bo'linmasi (USD) — mixed bo'lsa kiritiladi, aks holda avtomatik
@@ -875,7 +1005,7 @@ def create_sale(request):
 
                 sale.payment_cash_amount = cash_amt
                 sale.payment_card_amount = card_amt
-                sale.save(update_fields=['total_amount', 'payment_cash_amount', 'payment_card_amount'])
+                sale.save(update_fields=['total_amount', 'original_total_amount', 'discount_percent', 'payment_cash_amount', 'payment_card_amount'])
             
             logger.info(f"Sale created: {sale.id}, Total: ${total} USD")
             return JsonResponse({'success': True, 'sale_id': sale.id})
@@ -887,11 +1017,14 @@ def create_sale(request):
     categories = Category.objects.filter(market=market)
     
     # Top 8 eng ko'p sotilgan variantlar (1-o'rinda eng ko'p sotilgan)
+    # Tez tanlov uchun faqat mavjud (stokda bor yoki cheklanmagan) variantlar
+    from django.db.models import Q
     top_sold_variants = ProductVariant.objects.filter(
         is_active=True,
         product__is_active=True,
-        product__category__market=market,
-        stock_quantity__gt=0
+        product__category__market=market
+    ).filter(
+        Q(unlimited_stock=True) | Q(stock_quantity__gt=0)
     ).annotate(
         total_sold=Sum('saleitem__quantity')
     ).filter(
@@ -902,8 +1035,9 @@ def create_sale(request):
         top_sold_variants = ProductVariant.objects.filter(
             is_active=True,
             product__is_active=True,
-            product__category__market=market,
-            stock_quantity__gt=0
+            product__category__market=market
+        ).filter(
+            Q(unlimited_stock=True) | Q(stock_quantity__gt=0)
         ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute').order_by('-created_at')[:8]
     
     current_usd_rate = get_current_usd_rate(market)
@@ -924,6 +1058,7 @@ def create_sale(request):
             'sku': v.sku,
             'price': str(v.price),
             'stock': v.stock_quantity,
+            'unlimited_stock': v.unlimited_stock,
             'unit': v.product.unit,
         })
 
@@ -1145,11 +1280,12 @@ def cancel_sale(request, pk):
             return redirect('store:sale_detail', pk=pk)
 
         # Omborga qaytarish
-        for item in sale.items.select_related('variant'):
-            if item.variant:
-                variant = item.variant
-                variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
-                variant.save(update_fields=['stock_quantity'])
+            for item in sale.items.select_related('variant'):
+                if item.variant:
+                    variant = item.variant
+                    if not getattr(variant, 'unlimited_stock', False):
+                        variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
+                        variant.save(update_fields=['stock_quantity'])
 
         sale.status = 'returned'
         sale.save(update_fields=['status'])
@@ -1170,8 +1306,9 @@ def delete_sale(request, pk):
             for item in sale.items.select_related('variant'):
                 if item.variant:
                     variant = item.variant
-                    variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
-                    variant.save(update_fields=['stock_quantity'])
+                    if not getattr(variant, 'unlimited_stock', False):
+                        variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
+                        variant.save(update_fields=['stock_quantity'])
 
         sale_id = sale.id
         sale.delete()
@@ -1209,9 +1346,10 @@ def append_sale(request, pk):
             for item_data in items:
                 vid = int(item_data['product_id'])
                 quantity = int(item_data['quantity'])
-                if variants_dict[vid].stock_quantity < quantity:
+                variant = variants_dict[vid]
+                if not getattr(variant, 'unlimited_stock', False) and variant.stock_quantity < quantity:
                     return JsonResponse({
-                        'error': f'{variants_dict[vid]} uchun yetarli mahsulot yo\'q (omborda: {variants_dict[vid].stock_quantity} dona)'
+                        'error': f'{variant} uchun yetarli mahsulot yo\'q (omborda: {variant.stock_quantity} dona)'
                     }, status=400)
 
             total_added = Decimal('0')
@@ -1226,8 +1364,9 @@ def append_sale(request, pk):
                     quantity=quantity,
                     unit_price=unit_price
                 )
-                variant.stock_quantity = max(0, variant.stock_quantity - quantity)
-                variant.save(update_fields=['stock_quantity'])
+                if not getattr(variant, 'unlimited_stock', False):
+                    variant.stock_quantity = max(0, variant.stock_quantity - quantity)
+                    variant.save(update_fields=['stock_quantity'])
                 total_added += unit_price * quantity
 
             sale.total_amount += total_added
@@ -1263,8 +1402,9 @@ def edit_sale(request, pk):
             for item in sale.items.select_related('variant'):
                 if item.variant:
                     variant = item.variant
-                    variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
-                    variant.save(update_fields=['stock_quantity'])
+                    if not getattr(variant, 'unlimited_stock', False):
+                        variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
+                        variant.save(update_fields=['stock_quantity'])
 
             # Eski itemlarni o'chiramiz
             sale.items.all().delete()
@@ -1283,9 +1423,10 @@ def edit_sale(request, pk):
             for item_data in items:
                 vid = int(item_data['product_id'])
                 quantity = int(item_data['quantity'])
-                if variants_dict[vid].stock_quantity < quantity:
+                variant = variants_dict[vid]
+                if not getattr(variant, 'unlimited_stock', False) and variant.stock_quantity < quantity:
                     return JsonResponse({
-                        'error': f'{variants_dict[vid]} uchun yetarli mahsulot yo\'q (omborda: {variants_dict[vid].stock_quantity} dona)'
+                        'error': f'{variant} uchun yetarli mahsulot yo\'q (omborda: {variant.stock_quantity} dona)'
                     }, status=400)
 
             total = Decimal('0')
@@ -1300,9 +1441,29 @@ def edit_sale(request, pk):
                     quantity=quantity,
                     unit_price=unit_price
                 )
-                variant.stock_quantity = max(0, variant.stock_quantity - quantity)
-                variant.save(update_fields=['stock_quantity'])
+                if not getattr(variant, 'unlimited_stock', False):
+                    variant.stock_quantity = max(0, variant.stock_quantity - quantity)
+                    variant.save(update_fields=['stock_quantity'])
                 total += unit_price * quantity
+
+            original_total = total
+            discount_percent_raw = data.get('discount_percent')
+            dp = Decimal('0')
+            if discount_percent_raw is not None and discount_percent_raw != '':
+                try:
+                    dp = Decimal(str(discount_percent_raw))
+                except (ValueError, TypeError, InvalidOperation):
+                    dp = Decimal('0')
+            if dp > 0:
+                if dp >= Decimal('100'):
+                    dp = Decimal('99.99')
+                factor = (Decimal('100') - dp) / Decimal('100')
+                total = (total * factor).quantize(Decimal('0.01'))
+                sale.discount_percent = dp
+                sale.original_total_amount = original_total
+            else:
+                sale.discount_percent = Decimal('0')
+                sale.original_total_amount = original_total
 
             sale.total_amount = total
             if payment_method:
@@ -1335,7 +1496,7 @@ def edit_sale(request, pk):
 
             sale.payment_cash_amount = cash_amt
             sale.payment_card_amount = card_amt
-            sale.save(update_fields=['total_amount', 'payment_method', 'payment_cash_amount', 'payment_card_amount'])
+            sale.save(update_fields=['total_amount', 'original_total_amount', 'discount_percent', 'payment_method', 'payment_cash_amount', 'payment_card_amount'])
 
         logger.info(f"Sale edited: {sale.id}, New total: ${total} USD")
         return JsonResponse({'success': True, 'sale_id': sale.id})
@@ -1385,9 +1546,34 @@ def print_receipt(request, pk):
                 lines.append("  " + ", ".join(params))
     total_usd = float(sale.total_amount)
     total_usd_formatted = f"{total_usd:,.2f}"
-    total_soom_formatted = f"{total_usd * receipt_rate:,.0f}"
+    total_soom = total_usd * receipt_rate
+    total_soom_formatted = f"{total_soom:,.0f}"
+
+    original_total_usd = float(sale.original_total_amount or sale.total_amount)
+    original_total_usd_formatted = f"{original_total_usd:,.2f}"
+    original_total_soom = original_total_usd * receipt_rate
+    original_total_soom_formatted = f"{original_total_soom:,.0f}"
+    discount_percent_display = ""
+    discount_usd = 0.0
+    discount_soom = 0.0
+    original_total_applied = False
+    if sale.discount_percent and float(sale.discount_percent) > 0 and original_total_usd > 0:
+        original_total_applied = True
+        discount_percent_display = f"{float(sale.discount_percent):.2f}"
+        discount_usd = original_total_usd - total_usd
+        if discount_usd < 0:
+            discount_usd = 0.0
+        discount_soom = discount_usd * receipt_rate
+    discount_usd_formatted = f"{discount_usd:,.2f}"
+    discount_soom_formatted = f"{discount_soom:,.0f}"
+
     lines.append('')
-    lines.append(f"JAMI: ${total_usd_formatted}  {total_soom_formatted} so'm")
+    if original_total_applied:
+        lines.append(f"JAMI: ${original_total_usd_formatted}  {original_total_soom_formatted} so'm")
+        lines.append(f"Chegirma: {discount_percent_display}%  -${discount_usd_formatted}  -{discount_soom_formatted} so'm")
+        lines.append(f"Yakuniy: ${total_usd_formatted}  {total_soom_formatted} so'm")
+    else:
+        lines.append(f"JAMI: ${total_usd_formatted}  {total_soom_formatted} so'm")
     receipt_text = '\n'.join(lines)
     html = render_to_string('store/receipt.html', {
         'sale': sale,
@@ -1396,6 +1582,12 @@ def print_receipt(request, pk):
         'receipt_text': receipt_text,
         'total_usd_formatted': total_usd_formatted,
         'total_soom_formatted': total_soom_formatted,
+        'original_total_applied': original_total_applied,
+        'original_total_usd_formatted': original_total_usd_formatted,
+        'original_total_soom_formatted': original_total_soom_formatted,
+        'discount_usd_formatted': discount_usd_formatted,
+        'discount_soom_formatted': discount_soom_formatted,
+        'discount_percent_display': discount_percent_display,
     })
     response = HttpResponse(html)
     response['Content-Type'] = 'text/html; charset=utf-8'
@@ -1410,8 +1602,11 @@ def get_products_json(request):
     search = request.GET.get('search', '')
     
     variants = ProductVariant.objects.filter(
-        is_active=True, product__is_active=True, stock_quantity__gt=0,
+        is_active=True,
+        product__is_active=True,
         product__category__market=market
+    ).filter(
+        Q(unlimited_stock=True) | Q(stock_quantity__gt=0)
     ).select_related('product', 'product__category')
     
     if category_id:
@@ -1428,7 +1623,8 @@ def get_products_json(request):
         'name': v.product.name,
         'variant_name': str(v),
         'price': str(v.price * rate),  # so'm da (kassa savatida)
-        'stock': v.stock_quantity,
+        'stock': 999999 if getattr(v, 'unlimited_stock', False) else v.stock_quantity,
+        'unlimited_stock': v.unlimited_stock,
         'sku': v.sku,
         'unit': v.product.unit,
         'image': v.image.url if v.image else (v.product.image.url if v.product.image else ''),
@@ -1456,7 +1652,7 @@ def search_products_autocomplete(request):
         Q(product__name__icontains=query) | Q(sku__icontains=query)
     ).select_related('product', 'product__category').prefetch_related('attribute_values__attribute')
     if not include_out_of_stock:
-        variants = variants.filter(stock_quantity__gt=0)
+        variants = variants.filter(stock_quantity__gt=0, unlimited_stock=False)
     variants = variants[:20]
     
     rate = get_current_usd_rate(market)
@@ -1481,6 +1677,7 @@ def search_products_autocomplete(request):
             'color': color,
             'description': v.product.description or '',
             'stock': v.stock_quantity,
+            'unlimited_stock': v.unlimited_stock,
             'unit': v.product.unit,
         })
     
@@ -1601,6 +1798,7 @@ def get_product_variants_json(request, product_id):
             'price': str(v.price * rate),  # so'm da
             'price_usd': str(v.price),  # USD da
             'stock': v.stock_quantity,
+            'unlimited_stock': v.unlimited_stock,
             'sku': v.sku,
         })
     unit_display = product.get_unit_display()
@@ -1638,15 +1836,25 @@ def search_customers_autocomplete(request):
 
 @require_market
 def statistics(request):
-    """Statistika: sotuvlar va qarzlar summasi (kun bo'yicha yoki hammasi)."""
+    """Statistika: sotuvlar va qarzlar summasi (sana oralig'i bo'yicha yoki hammasi)."""
+    if not user_is_manager(request.user):
+        messages.error(request, "Statistika faqat menejerlar uchun.")
+        return redirect('store:product_list')
+
     market = get_request_market(request)
     current_usd_rate = get_current_usd_rate(market)
 
-    day = (request.GET.get('date') or '').strip()
+    date_from = (request.GET.get('date_from') or '').strip()
+    date_to = (request.GET.get('date_to') or '').strip()
 
     sales_qs = Sale.objects.filter(market=market, status='completed')
-    if day:
-        sales_qs = sales_qs.filter(sale_date__date=day)
+    # Sanalar oralig'i bo'yicha filtrlash (ixtiyoriy)
+    has_filter = bool(date_from or date_to)
+    if has_filter:
+        if date_from:
+            sales_qs = sales_qs.filter(sale_date__date__gte=date_from)
+        if date_to:
+            sales_qs = sales_qs.filter(sale_date__date__lte=date_to)
 
     # Summalar (USD va so'm) — so'mni har sotuvning usd_rate bo'yicha hisoblaymiz
     total_sales_usd = Decimal('0')
@@ -1658,19 +1866,24 @@ def statistics(request):
         total_sales_uzs += usd * rate
 
     credits_qs = Sale.objects.filter(market=market, status='completed', payment_method='credit')
-    if day:
-        credits_qs = credits_qs.filter(sale_date__date=day)
+    if has_filter:
+        if date_from:
+            credits_qs = credits_qs.filter(sale_date__date__gte=date_from)
+        if date_to:
+            credits_qs = credits_qs.filter(sale_date__date__lte=date_to)
 
     total_credit_usd = Decimal('0')
     total_credit_uzs = Decimal('0')
-    for s in credits_qs.only('total_amount', 'usd_rate'):
-        rate = s.usd_rate if s.usd_rate else current_usd_rate
-        usd = (s.total_amount or Decimal('0'))
-        total_credit_usd += usd
-        total_credit_uzs += usd * rate
+    if has_filter:
+        for s in credits_qs.only('total_amount', 'usd_rate'):
+            rate = s.usd_rate if s.usd_rate else current_usd_rate
+            usd = (s.total_amount or Decimal('0'))
+            total_credit_usd += usd
+            total_credit_uzs += usd * rate
 
     context = {
-        'date': day,
+        'date_from': date_from,
+        'date_to': date_to,
         'total_sales_usd': total_sales_usd,
         'total_sales_uzs': total_sales_uzs,
         'total_credit_usd': total_credit_usd,

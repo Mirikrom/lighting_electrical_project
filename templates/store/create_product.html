@@ -61,6 +61,7 @@
         outline: none;
     }
     
+    .form-control.is-invalid { border-color: #dc3545; box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25); }
     .form-control:hover, .form-select:hover {
         border-color: #d1d5db;
     }
@@ -329,6 +330,7 @@
 
     <form method="post" enctype="multipart/form-data" id="productForm">
         {% csrf_token %}
+        {% if return_sale %}<input type="hidden" name="return_sale" value="1">{% endif %}
         
         <!-- Mahsulot nomi -->
         <div class="form-group">
@@ -423,22 +425,6 @@
 
         <!-- Narxlar -->
         <div class="form-group">
-            <label for="cost_price" class="form-label">
-                Kirib kelish narxi <span class="required">*</span>
-            </label>
-            <div class="input-group">
-                <input type="number" class="form-control" id="cost_price" name="cost_price" 
-                       step="0.01" min="0.01" required>
-                <select class="form-select" id="cost_currency" name="cost_currency" style="max-width: 100px;">
-                    <option value="USD">USD</option>
-                    <option value="UZS">UZS</option>
-                </select>
-            </div>
-            <!-- <span class="help-text">Mahsulotning xarid narxi</span> -->
-            <input type="hidden" id="cost_price_uzs" name="cost_price_uzs">
-        </div>
-
-        <div class="form-group">
             <label for="price" class="form-label">
                 Sotish narxi <span class="required">*</span>
             </label>
@@ -475,11 +461,17 @@
 
         <!-- Ombordagi miqdor (faqat yangi mahsulot uchun) -->
         <div class="form-group" id="stockQuantityGroup">
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="unlimited_stock" name="unlimited_stock">
+                <label class="form-check-label" for="unlimited_stock">
+                    Omborda cheklanmagan (miqdorni kiritmasdan sotaverish)
+                </label>
+            </div>
             <label for="stock_quantity" class="form-label">
                 Ombordagi miqdor (dona) <span class="required">*</span>
             </label>
             <input type="number" class="form-control" id="stock_quantity" 
-                   name="stock_quantity" min="0" value="0" required>
+                   name="stock_quantity" min="1" value="" placeholder="Sonini kiriting yoki Cheklanmagan ni belgilang">
             <!-- <span class="help-text">Mahsulotning ombordagi soni</span> -->
         </div>
         
@@ -517,7 +509,11 @@
 
         <!-- Submit buttons -->
         <div class="form-actions">
-            {% if initial_product.variant %}
+            {% if return_sale %}
+            <button type="button" class="btn-cancel" id="btnCancelReturnSale">
+                <i class="bi bi-x-circle"></i> Bekor qilish
+            </button>
+            {% elif initial_product.variant %}
             <a href="{% url 'store:product_detail' initial_product.variant.id %}" class="btn-cancel">
                 <i class="bi bi-x-circle"></i> Bekor qilish
             </a>
@@ -574,6 +570,8 @@
 
 {% block extra_js %}
 {% if initial_product %}{{ initial_product|json_script:"initialProductData" }}{% endif %}
+{% if form_data %}{{ form_data|json_script:"formPostData" }}{% endif %}
+{% if form_post_stock_error %}<script>window.formPostStockError = true;</script>{% endif %}
 <script>
     // Autocomplete for product name
     let autocompleteTimeout;
@@ -715,7 +713,15 @@
         }
         
         suggestionsContainer.innerHTML = products.map((product, index) => {
-            const stockLabel = (product.stock != null && Number(product.stock) <= 0) ? ' <span class="text-muted">(qolmagan)</span>' : '';
+            let stockLabel = '';
+            if (product.unlimited_stock) {
+                stockLabel = ' <span class="text-muted">(Cheklanmagan)</span>';
+            } else if (product.stock != null && Number(product.stock) <= 0) {
+                stockLabel = ' <span class="text-muted">(qolmagan)</span>';
+            } else if (product.stock != null) {
+                const unit = (product.unit === 'metr' ? 'metr' : 'dona');
+                stockLabel = ' <span class="text-muted">(' + product.stock + ' ' + unit + ' qolgan)</span>';
+            }
             return `
             <div class="autocomplete-item" data-index="${index}" onclick="selectSuggestion(${JSON.stringify(product).replace(/"/g, '&quot;')})">
                 <div class="autocomplete-item-name">${highlightMatch(product.name, nameInput.value)}${stockLabel}</div>
@@ -850,7 +856,7 @@
                     const unitLabel = (data.unit_display || 'dona').toLowerCase();
                     listEl.innerHTML = '<table style="width:100%; border-collapse: collapse;"><thead><tr><th style="text-align:left; padding:6px 8px;">Rang</th><th style="text-align:left; padding:6px 8px;">Narx ($)</th><th style="text-align:left; padding:6px 8px;">Qoldiq</th></tr></thead><tbody>' +
                         data.variants.map(v => {
-                            const qoldiq = (v.stock != null && Number(v.stock) <= 0) ? 'qolmagan' : (v.stock + ' ' + unitLabel);
+                            const qoldiq = v.unlimited_stock ? 'Cheklanmagan' : ((v.stock != null && Number(v.stock) <= 0) ? 'qolmagan' : (v.stock + ' ' + unitLabel));
                             const priceUsd = (v.price_usd != null ? parseFloat(v.price_usd) : parseFloat(v.price)).toFixed(2);
                             return `<tr><td style="padding:6px 8px;">${v.color || '-'}</td><td style="padding:6px 8px;">${priceUsd} $</td><td style="padding:6px 8px;">${qoldiq}</td></tr>`;
                         }).join('') +
@@ -913,6 +919,10 @@
         
         // Hide current stock info
         document.getElementById('currentStockInfo').style.display = 'none';
+        const unlimitedCheckbox = document.getElementById('unlimited_stock');
+        if (unlimitedCheckbox) {
+            unlimitedCheckbox.checked = false;
+        }
     }
     
     // Close suggestions when clicking outside
@@ -945,16 +955,6 @@
         }
     }
     
-    // Currency conversion
-    const USD_RATE = 12500; // 1 USD = 12500 UZS
-    
-    function convertToUZS(amount, currency) {
-        if (currency === 'USD') {
-            return amount * USD_RATE;
-        }
-        return amount;
-    }
-    
     function formatSoomDot(num) {
         const n = Math.round(Number(num));
         const s = String(n < 0 ? -n : n);
@@ -966,52 +966,6 @@
             return Number(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' $';
         }
         return formatSoomDot(amount) + ' so\'m';
-    }
-    
-    // Calculate profit
-    function calculateProfit() {
-        const costPrice = parseFloat(document.getElementById('cost_price').value) || 0;
-        const costCurrency = document.getElementById('cost_currency').value;
-        const sellPrice = parseFloat(document.getElementById('price').value) || 0;
-        const priceCurrency = document.getElementById('price_currency').value;
-        const profitDisplay = document.getElementById('profitDisplay');
-        const profitAmount = document.getElementById('profitAmount');
-        const profitPercent = document.getElementById('profitPercent');
-        
-        // Check if elements exist before using them
-        if (!profitDisplay || !profitAmount || !profitPercent) {
-            return; // Exit if elements don't exist
-        }
-        
-        if (costPrice > 0 && sellPrice > 0) {
-            // Convert both to UZS for calculation
-            const costPriceUZS = convertToUZS(costPrice, costCurrency);
-            const sellPriceUZS = convertToUZS(sellPrice, priceCurrency);
-            
-            const profit = sellPriceUZS - costPriceUZS;
-            const profitPercentValue = costPriceUZS > 0 ? ((profit / costPriceUZS) * 100).toFixed(2) : 0;
-            
-            profitAmount.textContent = formatCurrency(profit, 'UZS');
-            profitPercent.textContent = profitPercentValue + '% foyda';
-            
-            // Update hidden fields for form submission (if they exist)
-            const costPriceUzsField = document.getElementById('cost_price_uzs');
-            const priceUzsField = document.getElementById('price_uzs');
-            if (costPriceUzsField) costPriceUzsField.value = costPriceUZS;
-            if (priceUzsField) priceUzsField.value = sellPriceUZS;
-            
-            // Update styling
-            profitDisplay.classList.remove('warning', 'danger');
-            profitDisplay.classList.add('show');
-            
-            if (profit < 0) {
-                profitDisplay.classList.add('danger');
-            } else if (parseFloat(profitPercentValue) < 10) {
-                profitDisplay.classList.add('warning');
-            }
-        } else {
-            profitDisplay.classList.remove('show');
-        }
     }
     
     // Add category via AJAX
@@ -1084,12 +1038,6 @@
             alert('Xatolik yuz berdi: ' + error);
         }
     }
-    
-    // Event listeners
-    document.getElementById('cost_price').addEventListener('input', calculateProfit);
-    document.getElementById('price').addEventListener('input', calculateProfit);
-    document.getElementById('cost_currency').addEventListener('change', calculateProfit);
-    document.getElementById('price_currency').addEventListener('change', calculateProfit);
     
     // Category selection logic
     document.getElementById('category').addEventListener('change', function() {
@@ -1220,6 +1168,22 @@
         }
     });
     
+    // Unlimited stock toggle
+    const unlimitedCheckbox = document.getElementById('unlimited_stock');
+    const stockInput = document.getElementById('stock_quantity');
+    if (unlimitedCheckbox && stockInput) {
+        unlimitedCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                stockInput.value = '';
+                stockInput.disabled = true;
+                stockInput.required = false;
+            } else {
+                stockInput.disabled = false;
+                stockInput.required = true;
+            }
+        });
+    }
+    
     // Pre-fill form when opened from product detail (O'zgartirish) — barcha maydonlar: nom, kategoriya, rang, narx, miqdor
     (function() {
         const el = document.getElementById('initialProductData');
@@ -1232,6 +1196,10 @@
             document.getElementById('existing_product_id').value = String(ip.id);
             const descEl = document.getElementById('description');
             if (descEl && ip.description != null) descEl.value = ip.description || '';
+            if (ip.unit) {
+                const unitEl = document.getElementById('unit');
+                if (unitEl) unitEl.value = ip.unit;
+            }
             if (ip.category_id) {
                 document.getElementById('category').value = ip.category_id;
                 document.getElementById('category').disabled = false;
@@ -1274,12 +1242,20 @@
                     costInput.value = Number(costVal).toFixed(2);
                     if (costCurrency) costCurrency.value = 'USD';
                 }
-                // Miqdor (ombordagi)
+                // Miqdor va cheklanmagan (ombordagi)
                 const stockInput = document.getElementById('stock_quantity');
-                if (stockInput && v.stock_quantity != null) {
-                    stockInput.value = Math.max(0, Number(v.stock_quantity));
-                    stockInput.disabled = false;
-                    stockInput.required = true;
+                const unlimitedCheckbox = document.getElementById('unlimited_stock');
+                if (unlimitedCheckbox) unlimitedCheckbox.checked = !!v.unlimited_stock;
+                if (stockInput) {
+                    if (v.unlimited_stock) {
+                        stockInput.value = '';
+                        stockInput.disabled = true;
+                        stockInput.required = false;
+                    } else {
+                        stockInput.value = (v.stock_quantity != null) ? Math.max(0, Number(v.stock_quantity)) : '';
+                        stockInput.disabled = false;
+                        stockInput.required = true;
+                    }
                 }
                 // Mavjud mahsulot uchun "Qancha kelgan" blokini yashirib, ombordagi miqdorni ko'rsatamiz
                 const qtyReceivedGroup = document.getElementById('quantityReceivedGroup');
@@ -1316,12 +1292,80 @@
         } catch (err) { console.warn('initial_product prefill:', err); }
     })();
 
+    // Validatsiya xatosi: POST dan qaytgan ma'lumotlarni formaga to'ldirish, miqdor maydonini qizil qilish
+    (function() {
+        const el = document.getElementById('formPostData');
+        if (!el) return;
+        try {
+            const d = JSON.parse(el.textContent);
+            if (d.name != null) { document.getElementById('name').value = d.name; selectedProductName = d.name; }
+            if (d.category != null) document.getElementById('category').value = d.category;
+            if (d.new_category != null) document.getElementById('new_category').value = d.new_category;
+            if (d.color != null) document.getElementById('color').value = d.color;
+            if (d.new_color != null) document.getElementById('new_color').value = d.new_color;
+            if (d.unit != null) document.getElementById('unit').value = d.unit;
+            if (d.sku != null) document.getElementById('sku').value = d.sku;
+            if (d.price != null) document.getElementById('price').value = d.price;
+            if (d.price_currency != null) document.getElementById('price_currency').value = d.price_currency;
+            if (d.stock_quantity != null) document.getElementById('stock_quantity').value = d.stock_quantity;
+            const unlimitedCb = document.getElementById('unlimited_stock');
+            if (unlimitedCb) unlimitedCb.checked = !!d.unlimited_stock;
+            if (d.quantity_received != null) document.getElementById('quantity_received').value = d.quantity_received;
+            if (d.existing_product_id != null) {
+                document.getElementById('existing_product_id').value = d.existing_product_id;
+                if (d.existing_product_id && typeof loadExistingVariants === 'function') loadExistingVariants(d.existing_product_id);
+            }
+            if (d.edit_variant_id != null) document.getElementById('edit_variant_id').value = d.edit_variant_id;
+            if (d.description != null) { const de = document.getElementById('description'); if (de) de.value = d.description; }
+            if (d.parametr && Array.isArray(d.parametr) && parametrContainer) {
+                parametrContainer.innerHTML = '';
+                d.parametr.slice(0, 5).forEach(function(val) {
+                    const row = document.createElement('div');
+                    row.className = 'parametr-row d-flex align-items-center gap-2';
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.name = 'parametr';
+                    input.className = 'form-control flex-grow-1';
+                    input.value = val || '';
+                    const removeBtn = document.createElement('button');
+                    removeBtn.type = 'button';
+                    removeBtn.className = 'btn btn-outline-danger btn-sm py-0 px-1';
+                    removeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+                    removeBtn.addEventListener('click', function() { row.remove(); if (btnAddParametr) btnAddParametr.disabled = false; });
+                    row.appendChild(input);
+                    row.appendChild(removeBtn);
+                    parametrContainer.appendChild(row);
+                });
+                if (btnAddParametr) btnAddParametr.disabled = parametrContainer.querySelectorAll('.parametr-row').length >= 5;
+            }
+            if (window.formPostStockError) {
+                const stockEl = document.getElementById('stock_quantity');
+                if (stockEl) {
+                    stockEl.classList.add('is-invalid');
+                    stockEl.focus();
+                }
+            }
+        } catch (err) { console.warn('formPostData prefill:', err); }
+    })();
+
+    {% if return_sale %}
+    (function() {
+        var btn = document.getElementById('btnCancelReturnSale');
+        if (btn && window.parent !== window) {
+            btn.addEventListener('click', function() {
+                window.parent.postMessage({ type: 'close_add_product_modal' }, '*');
+            });
+        }
+    })();
+    {% endif %}
+
     // Form validation
     document.getElementById('productForm').addEventListener('submit', function(e) {
         const name = document.getElementById('name').value.trim();
         const category = document.getElementById('category').value;
         const newCategory = document.getElementById('new_category').value.trim();
-        const costPrice = document.getElementById('cost_price').value;
+        const unlimitedCheckboxEl = document.getElementById('unlimited_stock');
+        let unlimitedStock = unlimitedCheckboxEl && unlimitedCheckboxEl.checked;
         const price = document.getElementById('price').value;
         const stock = document.getElementById('stock_quantity').value;
         const existingProductId = document.getElementById('existing_product_id').value;
@@ -1380,15 +1424,26 @@
             quantityReceivedInput.disabled = true;
             quantityReceivedInput.required = false;
             quantityReceivedInput.value = '';
-            
-            // For new products, stock validation
-            if (stock < 0) {
+
+            // Yangi mahsulot: miqdor kiritish yoki Cheklanmagan belgilash majburiy (0 yoki bo'sh qoldirilmasin)
+            if (!unlimitedStock && (stock === '' || stock === null || isNaN(parseFloat(stock)) || parseInt(stock, 10) < 1)) {
                 e.preventDefault();
-                alert('Soni manfiy bo\'lishi mumkin emas!');
-                document.getElementById('stock_quantity').focus();
+                var stockEl = document.getElementById('stock_quantity');
+                if (stockEl) {
+                    stockEl.classList.add('is-invalid');
+                    stockEl.focus();
+                }
+                alert('Iltimos sonini kiriting yoki «Cheklanmagan» ni belgilang!');
                 return false;
             }
         }
     });
+
+    // Miqdor maydoniga fokus qilinganda qizil ramka olib tashlanadi
+    var stockQtyInput = document.getElementById('stock_quantity');
+    if (stockQtyInput) {
+        stockQtyInput.addEventListener('focus', function() { this.classList.remove('is-invalid'); });
+        stockQtyInput.addEventListener('input', function() { this.classList.remove('is-invalid'); });
+    }
 </script>
 {% endblock %}

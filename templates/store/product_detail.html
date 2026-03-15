@@ -156,7 +156,15 @@
                                 {% endfor %}
                             </td>
                             <td>{{ v.price|floatformat:2|comma_to_dot }}$ ({{ v.price|multiply:usd_rate|intdot }} so'm)</td>
-                            <td>{% if v.stock_quantity <= 0 %}<span class="text-danger fw-bold">0 {{ v.product.get_unit_display }} (qolmagan)</span>{% else %}{{ v.stock_quantity }} {{ v.product.get_unit_display }}{% endif %}</td>
+                            <td>
+                                {% if v.unlimited_stock %}
+                                    <span class="text-success fw-bold">Cheklanmagan</span>
+                                {% elif v.stock_quantity <= 0 %}
+                                    <span class="text-danger fw-bold">0 {{ v.product.get_unit_display }} (qolmagan)</span>
+                                {% else %}
+                                    {{ v.stock_quantity }} {{ v.product.get_unit_display }}
+                                {% endif %}
+                            </td>
                             <td>
                                 <div class="d-flex flex-wrap gap-1">
                                 <a href="{% url 'store:create_sale' %}?product_id={{ v.id }}" class="btn btn-sm btn-primary"><i class="bi bi-cart-plus"></i> Sotish</a>

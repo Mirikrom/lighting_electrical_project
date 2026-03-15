@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <title>Saqlandi</title>
+</head>
+<body>
+    <p style="padding: 20px; font-family: sans-serif;">Mahsulot qo'shildi. Korzinkaga qo'shildi.</p>
+    <script>
+        (function() {
+            var payload = {
+                type: 'product_created_for_sale',
+                variant_id: {{ variant_id }},
+                variant_name: "{{ variant_name|escapejs }}",
+                price: "{{ price|escapejs }}",
+                unit: "{{ unit|escapejs }}",
+                stock: {{ stock }}
+            };
+            if (window.parent !== window) {
+                window.parent.postMessage(payload, '*');
+            }
+        })();
+    </script>
+</body>
+</html>

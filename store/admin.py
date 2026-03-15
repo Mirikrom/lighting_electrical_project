@@ -38,8 +38,8 @@ admin.site.register(User, UserAdminWithProfile)
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ['user', 'market']
-    list_filter = ['market']
+    list_display = ['user', 'market', 'role']
+    list_filter = ['market', 'role']
     search_fields = ['user__username']
     raw_id_fields = ['user']
 
@@ -91,8 +91,8 @@ class AttributeValueAdmin(admin.ModelAdmin):
 
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
-    list_display = ['product', 'get_variant_name', 'sku', 'cost_price', 'price', 'stock_quantity', 'is_active', 'created_at']
-    list_filter = ['product__category', 'is_active', 'created_at']
+    list_display = ['product', 'get_variant_name', 'sku', 'cost_price', 'price', 'stock_quantity', 'unlimited_stock', 'is_active', 'created_at']
+    list_filter = ['product__category', 'unlimited_stock', 'is_active', 'created_at']
     search_fields = ['product__name', 'sku']
     readonly_fields = ['created_at', 'updated_at']
     filter_horizontal = ['attribute_values']
@@ -101,7 +101,7 @@ class ProductVariantAdmin(admin.ModelAdmin):
             'fields': ('product', 'attribute_values')
         }),
         ('Narx va miqdor', {
-            'fields': ('sku', 'cost_price', 'price', 'stock_quantity', 'image', 'is_active')
+            'fields': ('sku', 'cost_price', 'price', 'stock_quantity', 'unlimited_stock', 'image', 'is_active')
         }),
         ('Vaqt', {
             'fields': ('created_at', 'updated_at')
