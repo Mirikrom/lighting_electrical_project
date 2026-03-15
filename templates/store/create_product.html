@@ -423,7 +423,20 @@
 
         <div class="section-divider"></div>
 
-        <!-- Narxlar -->
+        <!-- Tannarx / kirib kelish narxi (ixtiyoriy — statistika/foyda hisobi uchun) -->
+        <div class="form-group">
+            <label for="cost_price" class="form-label">Tannarx (ixtiyoriy)</label>
+            <div class="input-group">
+                <input type="number" class="form-control" id="cost_price" name="cost_price" 
+                       step="0.01" min="0" value="" placeholder="0">
+                <select class="form-select" id="cost_currency" name="cost_currency" style="max-width: 100px;">
+                    <option value="USD">USD</option>
+                    <option value="UZS">UZS</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Sotish narxi -->
         <div class="form-group">
             <label for="price" class="form-label">
                 Sotish narxi <span class="required">*</span>
@@ -436,7 +449,6 @@
                     <option value="UZS">UZS</option>
                 </select>
             </div>
-            <!-- <span class="help-text">Mijozga sotiladigan narx</span> -->
             <input type="hidden" id="price_uzs" name="price_uzs">
         </div>
 
@@ -1307,6 +1319,8 @@
             if (d.sku != null) document.getElementById('sku').value = d.sku;
             if (d.price != null) document.getElementById('price').value = d.price;
             if (d.price_currency != null) document.getElementById('price_currency').value = d.price_currency;
+            if (d.cost_price != null) document.getElementById('cost_price').value = d.cost_price;
+            if (d.cost_currency != null) document.getElementById('cost_currency').value = d.cost_currency;
             if (d.stock_quantity != null) document.getElementById('stock_quantity').value = d.stock_quantity;
             const unlimitedCb = document.getElementById('unlimited_stock');
             if (unlimitedCb) unlimitedCb.checked = !!d.unlimited_stock;

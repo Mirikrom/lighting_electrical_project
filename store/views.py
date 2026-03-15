@@ -368,6 +368,8 @@ def _create_product_form_data(post):
         'sku': post.get('sku', ''),
         'price': post.get('price', ''),
         'price_currency': post.get('price_currency', 'USD'),
+        'cost_price': post.get('cost_price', ''),
+        'cost_currency': post.get('cost_currency', 'USD'),
         'stock_quantity': post.get('stock_quantity', ''),
         'unlimited_stock': post.get('unlimited_stock') == 'on',
         'quantity_received': post.get('quantity_received', ''),
@@ -549,9 +551,8 @@ def create_product(request):
             new_category_name = request.POST.get('new_category', '').strip()
             color = request.POST.get('color', '').strip()
             new_color = request.POST.get('new_color', '').strip()
-            # Kirib kelish narxi hozircha ishlatilmaydi
-            cost_price = 0
-            cost_currency = 'USD'
+            cost_price_raw = request.POST.get('cost_price', '').strip()
+            cost_currency = request.POST.get('cost_currency', 'USD')
             price = request.POST.get('price')
             price_currency = request.POST.get('price_currency', 'USD')
             raw_stock = (request.POST.get('stock_quantity', '') or '').strip()
@@ -638,11 +639,20 @@ def create_product(request):
                                 'categories': categories, 'colors': colors, 'return_sale': return_sale_param,
                                 'form_data': _create_product_form_data(request.POST), 'form_post_stock_error': True
                             })
-                        # Kirib kelish narxi vaqtincha 0 da saqlanadi
-                        if first_variant:
-                            cost_price_usd = first_variant.cost_price
-                        else:
-                            cost_price_usd = Decimal('0')
+                        # Tannarx (ixtiyoriy) — formadan yoki birinchi variantdan
+                        cost_price_usd = first_variant.cost_price if first_variant else Decimal('0')
+                        cost_price_raw = request.POST.get('cost_price', '').strip()
+                        cost_currency = request.POST.get('cost_currency', 'USD')
+                        if cost_price_raw:
+                            try:
+                                if cost_currency == 'USD':
+                                    cost_price_usd = Decimal(str(cost_price_raw))
+                                else:
+                                    cost_price_usd = Decimal(str(cost_price_raw)) / Decimal(usd_rate)
+                                if cost_price_usd < 0:
+                                    cost_price_usd = Decimal('0')
+                            except (ValueError, TypeError, InvalidOperation):
+                                pass
                         
                         # Create new variant — kod model save() da avtomatik: nom 3 harf + raqam (raz-001, led-002)
                         new_variant = ProductVariant(
@@ -713,8 +723,16 @@ def create_product(request):
             # Narx bazada USD da saqlanadi — formadan USD yoki so'm ni USD ga o'tkazamiz
             usd_rate = get_current_usd_rate(market)
             try:
-                # Kirib kelish narxi vaqtincha 0
                 cost_price = Decimal('0')
+                cost_price_raw = request.POST.get('cost_price', '').strip()
+                cost_currency = request.POST.get('cost_currency', 'USD')
+                if cost_price_raw:
+                    if cost_currency == 'USD':
+                        cost_price = Decimal(str(cost_price_raw))
+                    else:
+                        cost_price = Decimal(str(cost_price_raw)) / Decimal(usd_rate)
+                    if cost_price < 0:
+                        cost_price = Decimal('0')
 
                 if price_currency == 'USD':
                     price = Decimal(str(price))
@@ -1881,6 +1899,18 @@ def statistics(request):
             total_credit_usd += usd
             total_credit_uzs += usd * rate
 
+    # Sof foyda — faqat tannarx kiritilgan tovarlar bo'yicha (tannarxi yo'q tovarlar hisobga olinmaydi)
+    total_profit_usd = Decimal('0')
+    total_profit_uzs = Decimal('0')
+    if has_filter:
+        sale_ids = list(sales_qs.values_list('id', flat=True))
+        items = SaleItem.objects.filter(sale_id__in=sale_ids).select_related('variant')
+        for item in items:
+            if item.variant and item.variant.cost_price and item.variant.cost_price > 0:
+                cost = item.variant.cost_price * item.quantity
+                total_profit_usd += (item.subtotal or Decimal('0')) - cost
+        total_profit_uzs = total_profit_usd * current_usd_rate
+
     context = {
         'date_from': date_from,
         'date_to': date_to,
@@ -1888,6 +1918,8 @@ def statistics(request):
         'total_sales_uzs': total_sales_uzs,
         'total_credit_usd': total_credit_usd,
         'total_credit_uzs': total_credit_uzs,
+        'total_profit_usd': total_profit_usd,
+        'total_profit_uzs': total_profit_uzs,
         'current_usd_rate': current_usd_rate,
     }
     return render(request, 'store/statistics.html', context)

@@ -70,6 +70,23 @@
         </div>
     </div>
 </div>
+<div class="row g-3 mt-0">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <strong>Sof foyda</strong>
+            </div>
+            <div class="card-body">
+                <div style="font-size: 24px; font-weight: 800; color: #047857;">
+                    ${{ total_profit_usd|floatformat:2|comma_to_dot }}
+                </div>
+                <div class="text-muted" style="margin-top: 6px; font-weight: 600;">
+                    {{ total_profit_uzs|floatformat:0|intdot }} so'm
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% else %}
 <div class="alert alert-info">
     Sana oralig'ini tanlang va <strong>Ko'rish</strong> tugmasini bosing.
