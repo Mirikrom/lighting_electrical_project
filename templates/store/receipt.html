@@ -10,13 +10,21 @@
         @media print {
             body, html { margin: 0; padding: 0; }
             .no-print { display: none !important; }
-            @page { size: 80mm auto; margin: 2mm 3mm; }
-            body { width: 72mm !important; max-width: 72mm !important; margin: 0 auto !important; padding: 0 2mm !important; }
-            #receipt-content { width: 72mm !important; max-width: 72mm !important; padding: 0 !important; }
-            .header h1 { font-size: 14pt !important; }
-            .header p, .info p, .item, .total, .footer p { font-size: 10pt !important; }
-            .item-parametrlar { font-size: 9pt !important; }
-            .total { font-size: 11pt !important; }
+            /* Chekni qog'ozdan kichikroq qilib chiqaramiz, o'ng cheti kesilmasligi uchun */
+            @page { size: 80mm auto; margin: 0; }
+            body { width: 58mm !important; max-width: 58mm !important; margin: 0 auto !important; padding: 0 1mm !important; }
+            #receipt-content { width: 58mm !important; max-width: 58mm !important; padding: 0 !important; }
+            /* Fontni aniq va qalin qilamiz (sans-serif) */
+            body, #receipt-content { font-family: Arial, Helvetica, sans-serif !important; font-size: 9pt !important; font-weight: 700 !important; }
+            /* Barcha matnlar (product name, parametr, info, jami va h.k.) bir xil katta va qalin */
+            .header h1 { font-size: 11pt !important; font-weight: 700 !important; }
+            .header p, .info p, .item, .total, .footer p { font-size: 9pt !important; font-weight: 700 !important; }
+            /* Miqdor × dona narx va umumiy summa qatori biroz kattaroq */
+            .item-qty-unit,
+            .item-price { font-size: 9pt !important; font-weight: 700 !important; }
+            /* Mahsulot parametrlari (rang va h.k.) */
+            .item-parametrlar { font-size: 9pt !important; font-weight: 700 !important; color: #000 !important; line-height: 1.2 !important; }
+            .total { font-size: 9pt !important; font-weight: 700 !important; }
         }
         
         body {
@@ -74,9 +82,9 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
-            gap: 4px;
+            gap: 2px;
         }
         
         .item-name {
@@ -96,14 +104,17 @@
         
         .item-qty-unit {
             flex-shrink: 0;
-            margin: 0 6px;
+            margin: 0 4px;
             white-space: nowrap;
+            font-size: 10px;
         }
         
         .item-price {
             text-align: right;
             flex-shrink: 0;
-            min-width: 42px;
+            min-width: 36px;
+            font-size: 10px;
+            word-break: break-all;
         }
         
         .total {
@@ -197,7 +208,7 @@
 <body>
     <div id="receipt-content">
     <div class="header">
-        <h1>Laziz_Electro</h1>
+        <h1>SOLO_ELECTRO</h1>
         <p>Chek #{{ sale.id }}</p>
         <p>{{ sale.sale_date|date:"d.m.Y H:i" }}</p>
         <p><strong>Bugungi kurs:</strong> {{ receipt_rate_formatted }} so'm</p>
@@ -230,8 +241,8 @@
         <div class="item-block">
             <div class="item">
                 <div class="item-name">{{ item.product.name }}</div>
-                <div class="item-qty-unit">{{ item.quantity }}{% if item.product.unit == 'metr' %} m {% endif %}× ${{ item.unit_price|floatformat:2|comma_to_dot }}</div>
-                <div class="item-price">${{ item.subtotal|floatformat:2|comma_to_dot }}</div>
+                <div class="item-qty-unit">${{ item.unit_price|floatformat:2|comma_to_dot }} -- {{ item.quantity }}{% if item.product.unit == 'metr' %} m {% endif %}×</div>
+                <div class="item-price">-- ${{ item.subtotal|floatformat:2|comma_to_dot }}</div>
             </div>
             {% if item.variant %}
             {% with params=item.variant|variant_parametrlar %}
