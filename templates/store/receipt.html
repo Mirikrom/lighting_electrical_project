@@ -76,6 +76,8 @@
         
         .item-block {
             margin: 4px 0;
+            padding-bottom: 4px;
+            border-bottom: 1px dashed #000;
         }
         
         .item {
@@ -86,11 +88,29 @@
             font-weight: 600;
             gap: 2px;
         }
+
+        .item-line1 {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+        }
+
+        .item-index {
+            flex-shrink: 0;
+            min-width: 16px;
+        }
         
         .item-name {
             flex: 1;
             min-width: 0;
             word-break: break-word;
+        }
+
+        .item-param-inline {
+            color: #000;
+            margin-left: 4px;
+            font-size: inherit;
+            font-weight: 600;
         }
         
         .item-parametrlar {
@@ -113,8 +133,23 @@
             text-align: right;
             flex-shrink: 0;
             min-width: 36px;
-            font-size: 10px;
+            font-size: 11px;
+            font-weight: 700;
             word-break: break-all;
+        }
+
+        .item-line2 {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-top: 1px;
+            gap: 8px;
+        }
+
+        .item-qty-left {
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
         }
         
         .total {
@@ -211,7 +246,6 @@
         <h1>SOLO_ELECTRO</h1>
         <p>Chek #{{ sale.id }}</p>
         <p>{{ sale.sale_date|date:"d.m.Y H:i" }}</p>
-        <p><strong>Bugungi kurs:</strong> {{ receipt_rate_formatted }} so'm</p>
     </div>
     
     <div class="info">
@@ -230,8 +264,8 @@
         </p>
         {% if sale.payment_method == 'mixed' %}
         <p style="margin-top: 6px;">
-            Naqd: ${{ sale.payment_cash_amount|floatformat:2|comma_to_dot }} ({{ sale.payment_cash_amount|multiply:receipt_rate|intdot }} so'm)<br>
-            Karta: ${{ sale.payment_card_amount|floatformat:2|comma_to_dot }} ({{ sale.payment_card_amount|multiply:receipt_rate|intdot }} so'm)
+            Naqd: {{ sale.payment_cash_amount|multiply:receipt_rate|floatformat:0|intdot }} so'm<br>
+            Karta: {{ sale.payment_card_amount|multiply:receipt_rate|floatformat:0|intdot }} so'm
         </p>
         {% endif %}
     </div>
@@ -239,18 +273,23 @@
     <div class="items">
         {% for item in sale.items.all %}
         <div class="item-block">
-            <div class="item">
-                <div class="item-name">{{ item.product.name }}</div>
-                <div class="item-qty-unit">${{ item.unit_price|floatformat:2|comma_to_dot }} -- {{ item.quantity }}{% if item.product.unit == 'metr' %} m {% endif %}×</div>
-                <div class="item-price">-- ${{ item.subtotal|floatformat:2|comma_to_dot }}</div>
+            <div class="item-line1">
+                <div class="item-index">{{ forloop.counter }}.</div>
+                <div class="item-name">
+                    {{ item.product.name }}
+                    {% if item.variant %}
+                    {% with params=item.variant|variant_parametrlar %}
+                    {% if params %}
+                    <span class="item-param-inline">{{ params }}</span>
+                    {% endif %}
+                    {% endwith %}
+                    {% endif %}
+                </div>
             </div>
-            {% if item.variant %}
-            {% with params=item.variant|variant_parametrlar %}
-            {% if params %}
-            <div class="item-parametrlar">{{ params }}</div>
-            {% endif %}
-            {% endwith %}
-            {% endif %}
+            <div class="item-line2">
+                <div class="item-qty-left">{{ item.quantity }} {% if item.product.unit == 'metr' %}metr{% else %}dona{% endif %} x {{ item.unit_price|multiply:receipt_rate|floatformat:0|intdot }}</div>
+                <div class="item-price">{{ item.subtotal|multiply:receipt_rate|floatformat:0|intdot }} so'm</div>
+            </div>
         </div>
         {% endfor %}
     </div>
@@ -259,18 +298,10 @@
         <span class="total-label">JAMI:</span>
         <span class="total-amounts">
             {% if original_total_applied %}
-                Umumiy summa ($): ${{ original_total_usd_formatted }}<br>
-                Umumiy summa (UZS): {{ original_total_soom_formatted }} so'm<br>
-                Chegirma: {% if discount_percent_display %}{{ discount_percent_display }}% — {% endif %}${{ discount_usd_formatted }} ({{ discount_soom_formatted }} so'm)<br>
-                Yakuniy to'lov ($): ${{ total_usd_formatted }}<br>
-                Yakuniy to'lov (UZS): {{ total_soom_formatted }} so'm
-            {% else %}
-                Umumiy summa ($): ${{ total_usd_formatted }}<br>
-                Umumiy summa (UZS): {{ total_soom_formatted }} so'm<br>
-                Chegirma: 0 so'm<br>
-                Yakuniy to'lov ($): ${{ total_usd_formatted }}<br>
-                Yakuniy to'lov (UZS): {{ total_soom_formatted }} so'm
+                Umumiy summa: {{ original_total_soom_formatted }} so'm<br>
+                Chegirma: {% if discount_percent_display %}{{ discount_percent_display }}% — {% endif %}{{ discount_soom_formatted }} so'm<br>
             {% endif %}
+            {{ total_soom_formatted }} so'm
         </span>
     </div>
     
