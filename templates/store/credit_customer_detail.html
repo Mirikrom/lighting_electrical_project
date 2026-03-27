@@ -1,0 +1,254 @@
+{% extends 'base.html' %}
+{% load store_tags %}
+
+{% block title %}Qarz tafsiloti - {{ customer.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .pretty-error-alert {
+        position: fixed;
+        right: 20px;
+        top: 20px;
+        z-index: 2000;
+        min-width: 320px;
+        max-width: 420px;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        color: #fff;
+        border-radius: 12px;
+        box-shadow: 0 12px 30px rgba(220, 38, 38, 0.35);
+        padding: 14px 16px;
+        display: none;
+    }
+    .pretty-error-alert.show {
+        display: block;
+        animation: alertSlideIn .2s ease-out;
+    }
+    .pretty-error-alert .title {
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    .pretty-error-alert .close-btn {
+        position: absolute;
+        top: 8px;
+        right: 10px;
+        border: none;
+        background: transparent;
+        color: #fff;
+        font-size: 18px;
+        cursor: pointer;
+    }
+    @keyframes alertSlideIn {
+        from { transform: translateY(-8px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="prettyErrorAlert" class="pretty-error-alert">
+    <button type="button" class="close-btn" onclick="document.getElementById('prettyErrorAlert').classList.remove('show')">&times;</button>
+    <div class="title">Xatolik</div>
+    <div id="prettyErrorText"></div>
+</div>
+
+<h1 class="display-6 fw-bold mb-3">
+    <i class="bi bi-person-lines-fill"></i> {{ customer.name }} - qarz tafsiloti
+</h1>
+
+<div class="mb-3">
+    <a href="{% url 'store:credit_list' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Qarzdorlar ro'yxatiga qaytish
+    </a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card border-danger">
+            <div class="card-body">
+                <div class="text-muted">Jami qoldiq</div>
+                <div class="h4 text-danger mb-0">${{ total_remaining_usd|floatformat:2|comma_to_dot }}</div>
+                <small class="text-muted">{{ total_remaining_usd|multiply:current_usd_rate|floatformat:0|intdot }} so'm</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-success">
+            <div class="card-body">
+                <div class="text-muted">Jami to'langan</div>
+                <div class="h4 text-success mb-0">${{ total_paid_usd|floatformat:2|comma_to_dot }}</div>
+                <small class="text-muted">{{ total_paid_usd|multiply:current_usd_rate|floatformat:0|intdot }} so'm</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-success text-white">
+        <strong>Umumiy qarzdan to'lov qilish</strong>
+    </div>
+    <div class="card-body">
+        {% if total_remaining_usd > 0 %}
+        <form method="post" class="row g-2 debt-payment-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_payment">
+            <div class="col-md-4">
+                <input type="number" step="0.01" min="0.01" name="amount" class="form-control js-amount-input" placeholder="Summa" required>
+            </div>
+            <div class="col-md-2">
+                <select name="currency" class="form-select js-currency-select">
+                    <option value="USD" selected>USD</option>
+                    <option value="UZS">so'm</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-success w-100">
+                    <i class="bi bi-cash-coin"></i> To'lash
+                </button>
+            </div>
+            <div class="col-md-3">
+                <button type="button"
+                        class="btn btn-outline-primary w-100 js-pay-all-btn"
+                        data-remaining-usd="{{ total_remaining_usd|floatformat:2|comma_to_dot }}">
+                    Barchasini to'lash (${{ total_remaining_usd|floatformat:2|comma_to_dot }})
+                </button>
+            </div>
+        </form>
+        {% else %}
+        <div class="text-success fw-semibold">Mijozning barcha qarzlari yopilgan.</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-warning">
+        <strong>Qarz sotuvlari (tafsilot)</strong>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Sotuv</th>
+                        <th>Sana</th>
+                        <th>Jami qarz</th>
+                        <th>To'langan</th>
+                        <th>Qoldiq</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in credit_rows %}
+                    <tr>
+                        <td>#{{ row.sale.id }}</td>
+                        <td>{{ row.sale.sale_date|date:"d.m.Y H:i" }}</td>
+                        <td>${{ row.sale.total_amount|floatformat:2|comma_to_dot }}</td>
+                        <td class="text-primary">${{ row.paid_usd|floatformat:2|comma_to_dot }}</td>
+                        <td>
+                            {% if row.is_closed %}
+                            <span class="badge bg-success">Yopilgan</span>
+                            {% else %}
+                            <strong class="text-danger">${{ row.remaining_usd|floatformat:2|comma_to_dot }}</strong>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="text-center text-muted">Qarz sotuvlari yo'q</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-dark text-white">
+        <strong>To'lovlar tarixi</strong>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Sana/soat</th>
+                        <th>Sotuv</th>
+                        <th>Kiritilgan summa</th>
+                        <th>USD ekvivalenti</th>
+                        <th>Qabul qilgan</th>
+                        <th>Holat</th>
+                        <th>Amal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in payment_history %}
+                    <tr class="{% if p.is_cancelled %}table-secondary{% endif %}">
+                        <td>{{ p.paid_at|date:"d.m.Y H:i" }}</td>
+                        <td>#{{ p.sale_id }}</td>
+                        <td>{{ p.amount_original|floatformat:2|comma_to_dot }} {{ p.currency }}</td>
+                        <td>${{ p.amount_usd|floatformat:2|comma_to_dot }}</td>
+                        <td>{{ p.created_by.username|default:"-" }}</td>
+                        <td>
+                            {% if p.is_cancelled %}
+                                <span class="badge bg-secondary">Bekor qilingan</span>
+                            {% else %}
+                                <span class="badge bg-success">Faol</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if not p.is_cancelled %}
+                            <form method="post" onsubmit="return confirm('To\\'lovni bekor qilinsinmi?');">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="cancel_payment">
+                                <input type="hidden" name="payment_id" value="{{ p.id }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    Bekor qilish
+                                </button>
+                            </form>
+                            {% else %}
+                            <small class="text-muted">{{ p.cancelled_at|date:"d.m.Y H:i" }}</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-center text-muted">To'lovlar hali yo'q</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.js-pay-all-btn');
+    if (!btn) return;
+    const form = btn.closest('.debt-payment-form');
+    if (!form) return;
+    const amountInput = form.querySelector('.js-amount-input');
+    const currencySelect = form.querySelector('.js-currency-select');
+    const remainingUsd = btn.getAttribute('data-remaining-usd');
+    if (currencySelect) currencySelect.value = 'USD';
+    if (amountInput) amountInput.value = remainingUsd || '';
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    const targetText = "To'lov summasi umumiy qarz qoldig'idan katta bo'lmasin.";
+    const alerts = document.querySelectorAll('.alert, [role="alert"]');
+    let found = false;
+    alerts.forEach(function(a) {
+        const txt = (a.textContent || '').trim();
+        if (txt.includes(targetText)) {
+            found = true;
+            a.style.display = 'none';
+        }
+    });
+    if (found) {
+        const box = document.getElementById('prettyErrorAlert');
+        const text = document.getElementById('prettyErrorText');
+        if (box && text) {
+            text.textContent = targetText;
+            box.classList.add('show');
+            setTimeout(function() { box.classList.remove('show'); }, 5000);
+        }
+    }
+});
+</script>
+{% endblock %}

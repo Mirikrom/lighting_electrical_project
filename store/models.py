@@ -303,3 +303,30 @@ class SaleItem(models.Model):
     def save(self, *args, **kwargs):
         self.subtotal = self.unit_price * self.quantity
         super().save(*args, **kwargs)
+
+
+class DebtPayment(models.Model):
+    CURRENCY_CHOICES = [
+        ('USD', 'USD'),
+        ('UZS', "So'm"),
+    ]
+
+    sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='debt_payments', verbose_name="Qarz sotuvi")
+    amount_usd = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))], verbose_name="To'lov (USD)")
+    amount_original = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))], verbose_name="Kiritilgan summa")
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', verbose_name="Valyuta")
+    rate_used = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))], verbose_name="Ishlatilgan kurs")
+    note = models.CharField(max_length=255, blank=True, verbose_name="Izoh")
+    paid_at = models.DateTimeField(auto_now_add=True, verbose_name="To'lov sanasi")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_debt_payments', verbose_name="Qabul qilgan")
+    is_cancelled = models.BooleanField(default=False, verbose_name="Bekor qilingan")
+    cancelled_at = models.DateTimeField(null=True, blank=True, verbose_name="Bekor qilingan sana")
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='cancelled_debt_payments', verbose_name="Bekor qilgan")
+
+    class Meta:
+        verbose_name = "Qarz to'lovi"
+        verbose_name_plural = "Qarz to'lovlari"
+        ordering = ['-paid_at']
+
+    def __str__(self):
+        return f"Sotuv #{self.sale_id}: {self.amount_original} {self.currency}"

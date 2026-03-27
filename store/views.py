@@ -14,7 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.conf import settings
 from django.urls import reverse_lazy
-from .models import Product, Category, Sale, SaleItem, Customer, ProductVariant, Attribute, AttributeValue, Market, UserProfile, ExchangeRate
+from .models import Product, Category, Sale, SaleItem, Customer, ProductVariant, Attribute, AttributeValue, Market, UserProfile, ExchangeRate, DebtPayment
 from .forms import RegisterForm
 from decimal import Decimal, InvalidOperation
 from django.utils import timezone
@@ -1174,7 +1174,10 @@ def create_sale(request):
 def credit_list(request):
     """Qarzdorlar ro'yxati"""
     market = get_request_market(request)
-    credits = Sale.objects.filter(market=market, payment_method='credit').select_related('customer', 'created_by')
+    credits = Sale.objects.filter(
+        market=market,
+        payment_method='credit'
+    ).select_related('customer', 'created_by').prefetch_related('debt_payments')
     
     # Filter by date range
     date_from = request.GET.get('date_from')
@@ -1189,17 +1192,64 @@ def credit_list(request):
     if customer_id:
         credits = credits.filter(customer_id=customer_id)
     
-    # Calculate total debt per customer
-    from django.db.models import Sum
-    customer_debts = credits.values('customer__id', 'customer__name', 'customer__phone').annotate(
-        total_debt=Sum('total_amount')
-    ).order_by('-total_debt')
-    
-    total_debt = credits.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
+    # Har bir qarz sotuvi bo'yicha qolgan qarzni hisoblaymiz
+    sale_remaining_map = {}
+    for sale in credits:
+        paid_usd = sum((p.amount_usd for p in sale.debt_payments.all() if not p.is_cancelled), Decimal('0'))
+        remaining = max(Decimal('0'), (sale.total_amount or Decimal('0')) - paid_usd)
+        sale.paid_usd = paid_usd
+        sale.remaining_usd = remaining
+        sale.is_closed = remaining <= Decimal('0.0001')
+        sale_remaining_map[sale.id] = {
+            'paid_usd': paid_usd,
+            'remaining_usd': remaining,
+            'is_closed': remaining <= Decimal('0.0001'),
+        }
+
+    # Mijozlar bo'yicha: aktiv qarzlar va yopilganlar alohida
+    customers_open = {}
+    customers_closed = {}
+    for sale in credits:
+        customer = sale.customer
+        if not customer:
+            continue
+        info = sale_remaining_map.get(sale.id, {})
+        remaining = info.get('remaining_usd', Decimal('0'))
+        paid_usd = info.get('paid_usd', Decimal('0'))
+
+        if customer.id not in customers_open:
+            customers_open[customer.id] = {
+                'customer__id': customer.id,
+                'customer__name': customer.name,
+                'customer__phone': customer.phone,
+                'total_debt': Decimal('0'),
+            }
+        if customer.id not in customers_closed:
+            customers_closed[customer.id] = {
+                'customer__id': customer.id,
+                'customer__name': customer.name,
+                'customer__phone': customer.phone,
+                'total_paid': Decimal('0'),
+            }
+        customers_open[customer.id]['total_debt'] += remaining
+        customers_closed[customer.id]['total_paid'] += paid_usd
+
+    customer_debts = sorted(
+        [v for v in customers_open.values() if v['total_debt'] > Decimal('0')],
+        key=lambda x: x['total_debt'],
+        reverse=True
+    )
+    closed_customer_debts = sorted(
+        [v for v in customers_closed.values() if v['customer__id'] not in {d['customer__id'] for d in customer_debts} and v['total_paid'] > 0],
+        key=lambda x: x['total_paid'],
+        reverse=True
+    )
+
+    total_debt = sum((d['total_debt'] for d in customer_debts), Decimal('0'))
     current_usd_rate = get_current_usd_rate(market)
 
     # 100 tadan oshsa pagination
-    credits = credits.order_by('-sale_date')
+    credits = sorted(credits, key=lambda s: s.sale_date, reverse=True)
     paginator = Paginator(credits, 100)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
@@ -1217,9 +1267,149 @@ def credit_list(request):
         'query_string': query_string,
         'total_credits_count': paginator.count,
         'customer_debts': customer_debts,
+        'closed_customer_debts': closed_customer_debts,
         'total_debt': total_debt,
         'current_usd_rate': current_usd_rate,
-        'customers': customers
+        'customers': customers,
+        'sale_remaining_map': sale_remaining_map,
+    })
+
+
+@require_market
+@require_http_methods(["GET", "POST"])
+def credit_customer_detail(request, customer_id):
+    """Bitta mijoz qarzlari: to'lov qo'shish/bekor qilish va tarix."""
+    market = get_request_market(request)
+    customer = get_object_or_404(Customer, pk=customer_id, market=market)
+    current_usd_rate = get_current_usd_rate(market)
+
+    credit_sales_qs = Sale.objects.filter(
+        market=market,
+        payment_method='credit',
+        customer=customer
+    ).select_related('created_by').prefetch_related('debt_payments').order_by('-sale_date')
+
+    if request.method == 'POST':
+        action = (request.POST.get('action') or '').strip()
+        if action == 'add_payment':
+            try:
+                amount_raw = (request.POST.get('amount') or '').strip().replace(',', '.')
+                currency = (request.POST.get('currency') or 'UZS').strip().upper()
+                amount = Decimal(amount_raw)
+                if amount <= 0:
+                    raise ValueError("To'lov summasi 0 dan katta bo'lishi kerak.")
+                if currency not in ('USD', 'UZS'):
+                    currency = 'UZS'
+            except Exception:
+                messages.error(request, "To'lov ma'lumotlari noto'g'ri.")
+                return redirect('store:credit_customer_detail', customer_id=customer.id)
+
+            with transaction.atomic():
+                sales_for_payment = list(
+                    Sale.objects.select_for_update().filter(
+                        market=market, payment_method='credit', customer=customer
+                    ).order_by('sale_date')
+                )
+                if not sales_for_payment:
+                    messages.error(request, "Mijozda qarz topilmadi.")
+                    return redirect('store:credit_customer_detail', customer_id=customer.id)
+
+                rate_used = current_usd_rate or DEFAULT_USD_RATE
+                if currency == 'USD':
+                    amount_usd_total = amount
+                else:
+                    amount_usd_total = amount / rate_used
+                amount_usd_total = amount_usd_total.quantize(Decimal('0.01'))
+
+                remaining_total_usd = Decimal('0')
+                sale_remainings = []
+                for sale in sales_for_payment:
+                    paid_usd = DebtPayment.objects.filter(sale=sale, is_cancelled=False).aggregate(total=Sum('amount_usd')).get('total') or Decimal('0')
+                    remaining_usd = max(Decimal('0'), (sale.total_amount or Decimal('0')) - paid_usd)
+                    remaining_total_usd += remaining_usd
+                    sale_remainings.append((sale, remaining_usd))
+
+                if amount_usd_total > remaining_total_usd + Decimal('0.0001'):
+                    messages.error(request, "To'lov summasi umumiy qarz qoldig'idan katta bo'lmasin.")
+                    return redirect('store:credit_customer_detail', customer_id=customer.id)
+
+                left_usd = amount_usd_total
+                for sale, sale_remaining in sale_remainings:
+                    if left_usd <= 0:
+                        break
+                    part_usd = min(left_usd, sale_remaining).quantize(Decimal('0.01'))
+                    if part_usd <= 0:
+                        continue
+                    # Kiritilgan valyutada qayd etish (history uchun)
+                    if currency == 'USD':
+                        part_original = part_usd
+                    else:
+                        sale_rate = sale.usd_rate or current_usd_rate or DEFAULT_USD_RATE
+                        part_original = (part_usd * sale_rate).quantize(Decimal('0.01'))
+                    DebtPayment.objects.create(
+                        sale=sale,
+                        amount_usd=part_usd,
+                        amount_original=part_original,
+                        currency=currency,
+                        rate_used=sale.usd_rate or current_usd_rate or DEFAULT_USD_RATE,
+                        created_by=request.user if request.user.is_authenticated else None,
+                    )
+                    left_usd = (left_usd - part_usd).quantize(Decimal('0.01'))
+                messages.success(request, "To'lov muvaffaqiyatli qo'shildi.")
+                return redirect('store:credit_customer_detail', customer_id=customer.id)
+
+        if action == 'cancel_payment':
+            try:
+                payment_id = int(request.POST.get('payment_id'))
+            except Exception:
+                messages.error(request, "To'lovni bekor qilishda xatolik.")
+                return redirect('store:credit_customer_detail', customer_id=customer.id)
+            with transaction.atomic():
+                payment = get_object_or_404(
+                    DebtPayment.objects.select_for_update().filter(
+                        sale__market=market,
+                        sale__payment_method='credit',
+                        sale__customer=customer,
+                    ),
+                    pk=payment_id
+                )
+                if payment.is_cancelled:
+                    messages.info(request, "Bu to'lov allaqachon bekor qilingan.")
+                    return redirect('store:credit_customer_detail', customer_id=customer.id)
+                payment.is_cancelled = True
+                payment.cancelled_at = timezone.now()
+                payment.cancelled_by = request.user if request.user.is_authenticated else None
+                payment.save(update_fields=['is_cancelled', 'cancelled_at', 'cancelled_by'])
+                messages.success(request, "To'lov bekor qilindi.")
+                return redirect('store:credit_customer_detail', customer_id=customer.id)
+
+    credit_rows = []
+    payment_history = []
+    for sale in credit_sales_qs:
+        payments = [p for p in sale.debt_payments.all()]
+        active_payments = [p for p in payments if not p.is_cancelled]
+        paid_usd = sum((p.amount_usd for p in active_payments), Decimal('0'))
+        remaining_usd = max(Decimal('0'), (sale.total_amount or Decimal('0')) - paid_usd)
+        credit_rows.append({
+            'sale': sale,
+            'paid_usd': paid_usd,
+            'remaining_usd': remaining_usd,
+            'is_closed': remaining_usd <= Decimal('0.0001'),
+            'payments': payments,
+        })
+        payment_history.extend(payments)
+
+    payment_history.sort(key=lambda p: p.paid_at, reverse=True)
+    total_remaining_usd = sum((row['remaining_usd'] for row in credit_rows), Decimal('0'))
+    total_paid_usd = sum((row['paid_usd'] for row in credit_rows), Decimal('0'))
+
+    return render(request, 'store/credit_customer_detail.html', {
+        'customer': customer,
+        'credit_rows': credit_rows,
+        'payment_history': payment_history,
+        'current_usd_rate': current_usd_rate,
+        'total_remaining_usd': total_remaining_usd,
+        'total_paid_usd': total_paid_usd,
     })
 
 

@@ -22,6 +22,7 @@ urlpatterns = [
     path('sales/<int:pk>/append/', views.append_sale, name='append_sale'),
     path('sales/<int:pk>/edit/', views.edit_sale, name='edit_sale'),
     path('credits/', views.credit_list, name='credit_list'),
+    path('credits/customer/<int:customer_id>/', views.credit_customer_detail, name='credit_customer_detail'),
     path('statistics/', views.statistics, name='statistics'),
     path('exchange-rate/', views.exchange_rate_view, name='exchange_rate'),
     path('sales/<int:pk>/receipt/', views.print_receipt, name='print_receipt'),

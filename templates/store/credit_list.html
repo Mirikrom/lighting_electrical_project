@@ -3,6 +3,21 @@
 
 {% block title %}Qarzdorlar - Lustra & Lempala{% endblock %}
 
+{% block extra_css %}
+<style>
+    .customer-debt-table .clickable-row {
+        cursor: pointer;
+        transition: background-color 0.15s ease;
+    }
+    .customer-debt-table .clickable-row:hover {
+        background-color: #f8fafc;
+    }
+    .customer-debt-table td:first-child strong {
+        color: #1d4ed8;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <h1 class="display-5 fw-bold mb-4">
     <i class="bi bi-credit-card"></i> Qarzdorlar
@@ -52,20 +67,54 @@
     </div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-hover">
+            <table class="table table-hover customer-debt-table">
                 <thead>
                     <tr>
                         <th>Mijoz</th>
                         <th>Telefon</th>
-                        <th>Jami qarz</th>
+                        <th>Qolgan qarz</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for debt in customer_debts %}
-                    <tr>
-                        <td><strong>{{ debt.customer__name|default:"Noma'lum" }}</strong></td>
+                    <tr class="clickable-row" data-href="{% url 'store:credit_customer_detail' debt.customer__id %}">
+                        <td>
+                            <strong>{{ debt.customer__name|default:"Noma'lum" }}</strong>
+                        </td>
                         <td>{{ debt.customer__phone|default:"-" }}</td>
                         <td><strong class="text-danger">${{ debt.total_debt|floatformat:2|comma_to_dot }}</strong> <small>({{ debt.total_debt|multiply:current_usd_rate|floatformat:0|intdot }} so'm)</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if closed_customer_debts %}
+<div class="card mb-4">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="bi bi-check2-circle"></i> Qarzi yopilgan mijozlar</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover customer-debt-table">
+                <thead>
+                    <tr>
+                        <th>Mijoz</th>
+                        <th>Telefon</th>
+                        <th>Jami to'langan</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for debt in closed_customer_debts %}
+                    <tr class="clickable-row" data-href="{% url 'store:credit_customer_detail' debt.customer__id %}">
+                        <td>
+                            <strong>{{ debt.customer__name|default:"Noma'lum" }}</strong>
+                        </td>
+                        <td>{{ debt.customer__phone|default:"-" }}</td>
+                        <td><strong class="text-success">${{ debt.total_paid|floatformat:2|comma_to_dot }}</strong> <small>({{ debt.total_paid|multiply:current_usd_rate|floatformat:0|intdot }} so'm)</small></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -83,7 +132,9 @@
                 <th>ID</th>
                 <th>Mijoz</th>
                 <th>Sana</th>
-                <th>Summa</th>
+                <th>Jami qarz</th>
+                <th>To'langan</th>
+                <th>Qoldiq</th>
                 <th>Yaratgan</th>
                 <th>Amallar</th>
             </tr>
@@ -103,9 +154,22 @@
                     {% endif %}
                 </td>
                 <td>{{ credit.sale_date|date:"d.m.Y H:i" }}</td>
-                <td><strong class="text-danger">${{ credit.total_amount|floatformat:2|comma_to_dot }}</strong> <small>({% with r=credit.usd_rate|default:current_usd_rate %}{{ credit.total_amount|multiply:r|floatformat:0|intdot }}{% endwith %} so'm)</small></td>
+                <td><strong class="text-danger">${{ credit.total_amount|floatformat:2|comma_to_dot }}</strong></td>
+                <td><strong class="text-primary">${{ credit.paid_usd|default:0|floatformat:2|comma_to_dot }}</strong></td>
+                <td>
+                    {% if credit.remaining_usd and credit.remaining_usd > 0 %}
+                    <strong class="text-danger">${{ credit.remaining_usd|floatformat:2|comma_to_dot }}</strong>
+                    {% else %}
+                    <strong class="text-success">Yopilgan</strong>
+                    {% endif %}
+                </td>
                 <td>{{ credit.created_by.username|default:"-" }}</td>
                 <td>
+                    {% if credit.customer %}
+                    <a href="{% url 'store:credit_customer_detail' credit.customer.id %}" class="btn btn-sm btn-warning">
+                        <i class="bi bi-cash-coin"></i> To'lov
+                    </a>
+                    {% endif %}
                     <a href="{% url 'store:sale_detail' credit.pk %}" class="btn btn-sm btn-primary">
                         <i class="bi bi-eye"></i> Ko'rish
                     </a>
@@ -116,7 +180,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="6" class="text-center">
+                <td colspan="8" class="text-center">
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i> Hech qanday qarz topilmadi.
                     </div>
@@ -128,4 +192,12 @@
 </div>
 
 {% include 'store/_pagination.html' with page_obj=page_obj query_string=query_string %}
+
+<script>
+document.addEventListener('click', function(e) {
+    const row = e.target.closest('.clickable-row[data-href]');
+    if (!row) return;
+    window.location.href = row.getAttribute('data-href');
+});
+</script>
 {% endblock %}
