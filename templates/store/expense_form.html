@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if is_edit %}Rasxodni tahrirlash{% else %}Yangi rasxod{% endif %} - Lustra & Lempala{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h2 fw-bold mb-0">
+                <i class="bi bi-wallet2"></i>
+                {% if is_edit %}Rasxodni tahrirlash{% else %}Yangi rasxod{% endif %}
+            </h1>
+            <a href="{% url 'store:expense_list' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Ro'yxatga
+            </a>
+        </div>
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="id_title">{{ form.title.label }}</label>
+                        {{ form.title }}
+                        {% if form.title.errors %}<div class="text-danger small">{{ form.title.errors }}</div>{% endif %}
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="id_amount_uzs">{{ form.amount_uzs.label }}</label>
+                            {{ form.amount_uzs }}
+                            {% if form.amount_uzs.errors %}<div class="text-danger small">{{ form.amount_uzs.errors }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="id_expense_date">{{ form.expense_date.label }}</label>
+                            {{ form.expense_date }}
+                            {% if form.expense_date.errors %}<div class="text-danger small">{{ form.expense_date.errors }}</div>{% endif %}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="id_payment_method">{{ form.payment_method.label }}</label>
+                            {{ form.payment_method }}
+                            {% if form.payment_method.errors %}<div class="text-danger small">{{ form.payment_method.errors }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="id_category">{{ form.category.label }}</label>
+                            {{ form.category }}
+                            {% if form.category.errors %}<div class="text-danger small">{{ form.category.errors }}</div>{% endif %}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="id_new_category_name">{{ form.new_category_name.label }}</label>
+                        {{ form.new_category_name }}
+                        <div class="form-text">Agar yangi nom kiritsangiz, u avtomatik kategoriya sifatida yaratiladi va ushbu rasxodga biriktiriladi.</div>
+                        {% if form.new_category_name.errors %}<div class="text-danger small">{{ form.new_category_name.errors }}</div>{% endif %}
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold" for="id_notes">{{ form.notes.label }}</label>
+                        {{ form.notes }}
+                        {% if form.notes.errors %}<div class="text-danger small">{{ form.notes.errors }}</div>{% endif %}
+                    </div>
+
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button type="submit" class="btn btn-primary px-4">
+                            <i class="bi bi-check2-circle"></i> Saqlash
+                        </button>
+                        <a href="{% url 'store:expense_list' %}" class="btn btn-outline-secondary">Bekor qilish</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

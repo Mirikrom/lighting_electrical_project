@@ -7,15 +7,20 @@ from django.contrib import messages
 from django.db import transaction
 from django.db.models import Q, Sum, Count, Prefetch
 from django.http import JsonResponse, HttpResponse
+import csv
+import io
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.conf import settings
-from django.urls import reverse_lazy
-from .models import Product, Category, Sale, SaleItem, Customer, ProductVariant, Attribute, AttributeValue, Market, UserProfile, ExchangeRate, DebtPayment
-from .forms import RegisterForm
+from django.urls import reverse_lazy, reverse
+from .models import (
+    Product, Category, Sale, SaleItem, Customer, ProductVariant, Attribute, AttributeValue,
+    Market, UserProfile, ExchangeRate, DebtPayment, Expense, ExpenseCategory, ProcessLog,
+)
+from .forms import RegisterForm, ExpenseForm
 from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 import json
@@ -303,8 +308,14 @@ def delete_product(request, pk):
         product_name = variant.product.name
         
         try:
+            vid = variant.pk
+            detail_snap = _variant_delete_snapshot_text(variant)
             variant.delete()
             logger.info(f"ProductVariant deleted: {product_name}")
+            log_process(
+                market, request.user, ProcessLog.ENTITY_PRODUCT, ProcessLog.ACTION_DELETE, vid,
+                f"Variant o'chirildi: {product_name}", detail_snap,
+            )
             messages.success(request, f'Mahsulot muvaffaqiyatli o\'chirildi: {product_name}')
             
             # Check where the request came from
@@ -330,8 +341,14 @@ def delete_product(request, pk):
             product_name = product.name
             
             try:
+                pid = product.pk
+                detail_snap = _product_delete_snapshot_text(product)
                 product.delete()
                 logger.info(f"Product deleted: {product_name}")
+                log_process(
+                    market, request.user, ProcessLog.ENTITY_PRODUCT, ProcessLog.ACTION_DELETE, pid,
+                    f"Mahsulot o'chirildi: {product_name}", detail_snap,
+                )
                 messages.success(request, f'Mahsulot muvaffaqiyatli o\'chirildi: {product_name}')
                 
                 # Check where the request came from
@@ -538,6 +555,11 @@ def create_product(request):
                     if image:
                         update_fields.append('image')
                     variant.save(update_fields=update_fields)
+                    log_process(
+                        market, request.user, ProcessLog.ENTITY_PRODUCT, ProcessLog.ACTION_EDIT, variant.pk,
+                        f"Variant tahrirlandi: {variant.product.name}",
+                        f"SKU: {variant.sku or '—'}, narx/zaxira yangilandi.",
+                    )
                     messages.success(request, f'Variant yangilandi: {variant.product.name}')
                     if request.GET.get('return_sale') or request.POST.get('return_sale'):
                         return _render_product_created_for_sale(request, variant)
@@ -614,6 +636,11 @@ def create_product(request):
                         existing_variant.stock_quantity = max(0, existing_variant.stock_quantity) + new_quantity
                         existing_variant.save()
                         logger.info(f"Variant stock updated: {existing_variant}, Added: {new_quantity}, New total: {existing_variant.stock_quantity}")
+                        log_process(
+                            market, request.user, ProcessLog.ENTITY_PRODUCT, ProcessLog.ACTION_EDIT, existing_variant.pk,
+                            f"Zaxira yangilandi: {existing_variant.product.name}",
+                            f"+{new_quantity} dona, jami: {existing_variant.stock_quantity} dona.",
+                        )
                         messages.success(request, f'Mahsulot soni yangilandi: {existing_variant} (+{new_quantity} dona, Jami: {existing_variant.stock_quantity} dona)')
                         if request.GET.get('return_sale') or request.POST.get('return_sale'):
                             return _render_product_created_for_sale(request, existing_variant)
@@ -681,6 +708,11 @@ def create_product(request):
                                 new_variant.attribute_values.add(p_av)
                         
                         logger.info(f"New variant created: {new_variant} (SKU: {new_variant.sku})")
+                        log_process(
+                            market, request.user, ProcessLog.ENTITY_PRODUCT, ProcessLog.ACTION_CREATE, new_variant.pk,
+                            f"Yangi variant: {existing_product.name}",
+                            f"SKU: {new_variant.sku or '—'}, zaxira: {new_variant.stock_quantity}.",
+                        )
                         msg_suffix = f' ({final_color.upper()})' if final_color else ''
                         messages.success(request, f'Yangi variant muvaffaqiyatli qo\'shildi: {existing_product.name}{msg_suffix}')
                         if request.GET.get('return_sale') or request.POST.get('return_sale'):
@@ -817,6 +849,11 @@ def create_product(request):
                     variant.attribute_values.set(attribute_values)
                 
                 logger.info(f"ProductVariant created successfully: {variant} (SKU: {variant.sku}, ID: {variant.id})")
+                log_process(
+                    market, request.user, ProcessLog.ENTITY_PRODUCT, ProcessLog.ACTION_CREATE, variant.pk,
+                    f"Yangi mahsulot: {product.name}",
+                    f"Mahsulot ID: {product.pk}, variant ID: {variant.pk}, SKU: {variant.sku or '—'}.",
+                )
                 messages.success(request, f'Mahsulot muvaffaqiyatli qo\'shildi: {product.name}')
                 if request.GET.get('return_sale') or request.POST.get('return_sale'):
                     return _render_product_created_for_sale(request, variant)
@@ -932,15 +969,31 @@ def create_sale(request):
                             phone=customer_phone,
                             defaults={'name': customer_name}
                         )
-                        if not created and customer.name != customer_name:
+                        if created:
+                            log_process(
+                                market, request.user, ProcessLog.ENTITY_CUSTOMER, ProcessLog.ACTION_CREATE,
+                                customer.pk, f"Yangi mijoz: {customer.name}",
+                                f"Telefon: {customer_phone}",
+                            )
+                        elif customer.name != customer_name:
                             customer.name = customer_name
                             customer.save()
+                            log_process(
+                                market, request.user, ProcessLog.ENTITY_CUSTOMER, ProcessLog.ACTION_EDIT,
+                                customer.pk, f"Mijoz yangilandi: {customer.name}",
+                                f"Telefon: {customer_phone}",
+                            )
                     else:
                         customer, created = Customer.objects.get_or_create(
                             market=market,
                             name=customer_name,
                             defaults={'phone': ''}
                         )
+                        if created:
+                            log_process(
+                                market, request.user, ProcessLog.ENTITY_CUSTOMER, ProcessLog.ACTION_CREATE,
+                                customer.pk, f"Yangi mijoz: {customer.name}", "Telefon kiritilmagan",
+                            )
                 
                 usd_rate = data.get('usd_rate')
                 sale_kwargs = dict(
@@ -1026,6 +1079,19 @@ def create_sale(request):
                 sale.save(update_fields=['total_amount', 'original_total_amount', 'discount_percent', 'payment_cash_amount', 'payment_card_amount'])
             
             logger.info(f"Sale created: {sale.id}, Total: ${total} USD")
+            pay_lab = dict(Sale.PAYMENT_METHODS)
+            cust_line = ''
+            if customer:
+                cust_line = f"Mijoz: {customer.name}"
+                if customer.phone:
+                    cust_line += f" ({customer.phone})"
+            sale_det = f"Jami: ${total} USD. To'lov: {pay_lab.get(payment_method, payment_method)}."
+            if cust_line:
+                sale_det = cust_line + '\n' + sale_det
+            log_process(
+                market, request.user, ProcessLog.ENTITY_SALE, ProcessLog.ACTION_CREATE, sale.pk,
+                f"Sotuv #{sale.pk} yaratildi", sale_det,
+            )
             return JsonResponse({'success': True, 'sale_id': sale.id})
             
         except Exception as e:
@@ -1355,6 +1421,11 @@ def credit_customer_detail(request, customer_id):
                         created_by=request.user if request.user.is_authenticated else None,
                     )
                     left_usd = (left_usd - part_usd).quantize(Decimal('0.01'))
+                log_process(
+                    market, request.user, ProcessLog.ENTITY_DEBT_PAYMENT, ProcessLog.ACTION_PAY, customer.pk,
+                    f"Qarz to'lovi: {customer.name}",
+                    f"Jami USD: {amount_usd_total}, kiritilgan: {amount} {currency}.",
+                )
                 messages.success(request, "To'lov muvaffaqiyatli qo'shildi.")
                 return redirect('store:credit_customer_detail', customer_id=customer.id)
 
@@ -1380,6 +1451,11 @@ def credit_customer_detail(request, customer_id):
                 payment.cancelled_at = timezone.now()
                 payment.cancelled_by = request.user if request.user.is_authenticated else None
                 payment.save(update_fields=['is_cancelled', 'cancelled_at', 'cancelled_by'])
+                log_process(
+                    market, request.user, ProcessLog.ENTITY_DEBT_PAYMENT, ProcessLog.ACTION_CANCEL_PAY, payment.pk,
+                    f"To'lov bekor: mijoz {customer.name}",
+                    f"To'lov ID: {payment.pk}, sotuv #{payment.sale_id}, {payment.amount_usd} USD.",
+                )
                 messages.success(request, "To'lov bekor qilindi.")
                 return redirect('store:credit_customer_detail', customer_id=customer.id)
 
@@ -1441,6 +1517,13 @@ def exchange_rate_view(request):
             market=market,
             date=today,
             defaults={'rate': rate_val}
+        )
+        log_process(
+            market, request.user, ProcessLog.ENTITY_EXCHANGE_RATE,
+            ProcessLog.ACTION_CREATE if created else ProcessLog.ACTION_EDIT,
+            obj.pk,
+            f"Kurs: 1 USD = {rate_val} so'm",
+            f"Sana: {today}",
         )
         next_url = request.GET.get('next', '').strip()
         if next_url and next_url.startswith('/') and not next_url.startswith('//'):
@@ -1536,6 +1619,11 @@ def cancel_sale(request, pk):
 
         sale.status = 'returned'
         sale.save(update_fields=['status'])
+        log_process(
+            market, request.user, ProcessLog.ENTITY_SALE, ProcessLog.ACTION_RETURN, sale.pk,
+            f"Sotuv #{sale.pk} qaytarildi",
+            "Holat: qaytarilgan, mahsulotlar omborga qaytarilgan.",
+        )
         messages.success(request, "Sotuv orqaga qaytarildi va mahsulotlar omborga qaytarildi.")
     return redirect('store:sale_detail', pk=pk)
 
@@ -1546,11 +1634,22 @@ def delete_sale(request, pk):
     """Sotuvni o'chirish. Agar hali qaytarilmagan bo'lsa, mahsulotlar omborga qaytariladi, so'ng sotuv o'chiriladi."""
     market = get_request_market(request)
     with transaction.atomic():
-        sale = get_object_or_404(Sale.objects.select_for_update(), pk=pk, market=market)
+        items_prefetch = Prefetch(
+            'items',
+            queryset=SaleItem.objects.select_related('variant__product', 'product_old').prefetch_related(
+                'variant__attribute_values__attribute',
+            ),
+        )
+        sale = get_object_or_404(
+            Sale.objects.select_for_update()
+            .select_related('customer', 'created_by')
+            .prefetch_related(items_prefetch, 'debt_payments'),
+            pk=pk, market=market,
+        )
 
         # Agar hali qaytarilmagan bo'lsa, omborga qaytaramiz
         if sale.status == 'completed':
-            for item in sale.items.select_related('variant'):
+            for item in sale.items.all():
                 if item.variant:
                     variant = item.variant
                     if not getattr(variant, 'unlimited_stock', False):
@@ -1558,7 +1657,13 @@ def delete_sale(request, pk):
                         variant.save(update_fields=['stock_quantity'])
 
         sale_id = sale.id
+        detail_snapshot = _sale_delete_snapshot_text(sale)
         sale.delete()
+        log_process(
+            market, request.user, ProcessLog.ENTITY_SALE, ProcessLog.ACTION_DELETE, sale_id,
+            f"Sotuv #{sale_id} o'chirildi",
+            detail_snapshot,
+        )
         messages.success(request, f"Sotuv #{sale_id} to'liq o'chirildi.")
     return redirect('store:sale_list')
 
@@ -1620,6 +1725,11 @@ def append_sale(request, pk):
             sale.save(update_fields=['total_amount'])
 
         logger.info(f"Sale appended: {sale.id}, Added total: ${total_added} USD")
+        log_process(
+            market, request.user, ProcessLog.ENTITY_SALE, ProcessLog.ACTION_APPEND, sale.id,
+            f"Sotuv #{sale.id} ga mahsulot qo'shildi",
+            f"Qo'shilgan summa: ${total_added} USD. Yangi jami: ${sale.total_amount} USD.",
+        )
         return JsonResponse({'success': True, 'sale_id': sale.id})
     except Exception as e:
         logger.error(f"Error appending sale: {str(e)}")
@@ -1746,6 +1856,12 @@ def edit_sale(request, pk):
             sale.save(update_fields=['total_amount', 'original_total_amount', 'discount_percent', 'payment_method', 'payment_cash_amount', 'payment_card_amount'])
 
         logger.info(f"Sale edited: {sale.id}, New total: ${total} USD")
+        pay_lab = dict(Sale.PAYMENT_METHODS)
+        log_process(
+            market, request.user, ProcessLog.ENTITY_SALE, ProcessLog.ACTION_EDIT, sale.pk,
+            f"Sotuv #{sale.pk} tahrirlandi",
+            f"Yangi jami: ${total} USD. To'lov: {pay_lab.get(sale.payment_method, sale.payment_method)}.",
+        )
         return JsonResponse({'success': True, 'sale_id': sale.id})
     except Exception as e:
         logger.error(f"Error editing sale: {str(e)}")
@@ -2086,7 +2202,427 @@ def search_customers_autocomplete(request):
     return JsonResponse({'customers': data})
 
 
+def _expense_category_name(expense):
+    return expense.category.name if expense.category else ''
+
+
+def log_process(market, user, entity_type, action, entity_id, title, detail_text=''):
+    """Jarayonlar tarixiga yozuv (xato bo'lsa asosiy operatsiya buzilmasin)."""
+    if not market:
+        return
+    try:
+        uid = user.pk if user and getattr(user, 'is_authenticated', False) else None
+        ProcessLog.objects.create(
+            market=market,
+            entity_type=entity_type,
+            action=action,
+            entity_id=int(entity_id),
+            title_snapshot=str(title)[:300],
+            detail_text=(detail_text or '')[:50000],
+            performed_by_id=uid,
+        )
+    except Exception as e:
+        logger.warning('ProcessLog yozishda xato: %s', e)
+
+
+def _log_expense(market, user, action, expense, detail_text=''):
+    parts = [f"{expense.amount_uzs} so'm"]
+    cat = _expense_category_name(expense)
+    if cat:
+        parts.append(f"kategoriya: {cat}")
+    if expense.expense_date:
+        parts.append(f"sana: {expense.expense_date}")
+    if detail_text:
+        parts.append(detail_text)
+    log_process(
+        market, user, ProcessLog.ENTITY_EXPENSE, action, expense.pk,
+        f"Rasxod #{expense.pk}: {expense.title}",
+        '\n'.join(parts),
+    )
+
+
+def _build_expense_edit_detail(old, expense_after):
+    pay = dict(Expense.PAYMENT_CHOICES)
+    lines = []
+    if old['title'] != expense_after.title:
+        lines.append(f"Sarlavha: «{old['title']}» → «{expense_after.title}»")
+    if (old['notes'] or '') != (expense_after.notes or ''):
+        lines.append("Izoh o'zgartirildi.")
+    if old['amount_uzs'] != expense_after.amount_uzs:
+        lines.append(f"Summa: {old['amount_uzs']} → {expense_after.amount_uzs} so'm")
+    if old['expense_date'] != expense_after.expense_date:
+        lines.append(f"Sana: {old['expense_date']} → {expense_after.expense_date}")
+    if old['payment_method'] != expense_after.payment_method:
+        lines.append(
+            f"To'lov: {pay.get(old['payment_method'], old['payment_method'])} → "
+            f"{pay.get(expense_after.payment_method, expense_after.payment_method)}"
+        )
+    cat_new = _expense_category_name(expense_after)
+    if old['category_name'] != cat_new:
+        lines.append(f"Kategoriya: «{old['category_name'] or '—'}» → «{cat_new or '—'}»")
+    return '\n'.join(lines) if lines else "Ma'lumotlar yangilandi."
+
+
+def _sale_delete_snapshot_text(sale):
+    """O'chirishdan oldin sotuvning to'liq matnli nusxasi (tarix uchun)."""
+    pay_labels = dict(Sale.PAYMENT_METHODS)
+    st_labels = dict(Sale.STATUS_CHOICES)
+    lines = []
+    if getattr(sale, 'sale_date', None):
+        lines.append(f"Sana: {sale.sale_date.strftime('%d.%m.%Y %H:%M')}")
+    lines.append(f"Holat: {st_labels.get(sale.status, sale.status)}")
+    if sale.customer:
+        c = sale.customer.name
+        if sale.customer.phone:
+            c += f", tel: {sale.customer.phone}"
+        if (sale.customer.address or '').strip():
+            c += f", manzil: {(sale.customer.address or '')[:200]}"
+        lines.append(f"Mijoz: {c}")
+    else:
+        lines.append("Mijoz: —")
+    if sale.usd_rate:
+        lines.append(f"Kurs (1 USD): {sale.usd_rate} so'm")
+    if sale.discount_percent and sale.discount_percent > 0:
+        lines.append(f"Chegirma: {sale.discount_percent}%")
+    lines.append(f"Chegirmasiz jami (USD): ${sale.original_total_amount}")
+    lines.append(f"Jami (USD): ${sale.total_amount}")
+    lines.append(f"To'lov: {pay_labels.get(sale.payment_method, sale.payment_method)}")
+    if sale.payment_method == 'mixed':
+        lines.append(f"  Naqd (USD): ${sale.payment_cash_amount}, Karta (USD): ${sale.payment_card_amount}")
+    if (sale.notes or '').strip():
+        lines.append(f"Izoh: {(sale.notes or '').strip()[:800]}")
+    if sale.created_by:
+        lines.append(f"Yaratgan: {sale.created_by.username}")
+    lines.append('--- Mahsulotlar ---')
+    items = list(sale.items.all())
+    if not items:
+        lines.append("(qatorlar yo'q)")
+    for i, item in enumerate(items, 1):
+        if item.variant:
+            v = item.variant
+            p = v.product
+            try:
+                vdisp = v.get_display_name()
+            except Exception:
+                vdisp = str(v)
+            sku = v.sku or '—'
+            unit_suf = ' M' if getattr(p, 'unit', '') == 'metr' else ' dona'
+            lines.append(
+                f"{i}. {p.name} | {vdisp} | SKU {sku} | {item.quantity}{unit_suf} x ${item.unit_price} = ${item.subtotal}"
+            )
+        elif item.product_old:
+            pu = item.product_old
+            unit_suf = ' M' if getattr(pu, 'unit', '') == 'metr' else ' dona'
+            lines.append(
+                f"{i}. {pu.name} | {item.quantity}{unit_suf} x ${item.unit_price} = ${item.subtotal}"
+            )
+        else:
+            lines.append(f"{i}. (noma'lum mahsulot) {item.quantity} x ${item.unit_price} = ${item.subtotal}")
+    if sale.payment_method == 'credit':
+        dps = list(sale.debt_payments.all())
+        lines.append("--- Qarz to'lovlari (barcha yozuvlar) ---")
+        if not dps:
+            lines.append("(to'lov yozuvi yo'q)")
+        else:
+            for p in dps:
+                st = "BEKOR" if p.is_cancelled else "faol"
+                cb = ''
+                if p.is_cancelled and p.cancelled_at:
+                    cb = f", bekor: {p.cancelled_at.strftime('%d.%m.%Y %H:%M')}"
+                paid_part = ''
+                if getattr(p, 'paid_at', None):
+                    paid_part = f" | sana: {p.paid_at.strftime('%d.%m.%Y %H:%M')}"
+                note_part = ''
+                if (p.note or '').strip():
+                    note_part = f" | izoh: {(p.note or '').strip()[:120]}"
+                lines.append(
+                    f"  #{p.id}: {p.amount_usd} USD | kiritilgan: {p.amount_original} {p.currency} | "
+                    f"kurs {p.rate_used} | {st}{cb}{paid_part}{note_part}"
+                )
+    return '\n'.join(lines)
+
+
+def _variant_delete_snapshot_text(variant):
+    """Variant o'chirishdan oldin."""
+    variant = ProductVariant.objects.select_related('product', 'product__category').prefetch_related(
+        'attribute_values__attribute'
+    ).filter(pk=variant.pk).first() or variant
+    p = variant.product
+    lines = [
+        f"Mahsulot: {p.name}",
+        f"Kategoriya: {p.category.name if p.category else '—'}",
+        f"O'lchov: {p.get_unit_display()}",
+        f"Variant DB ID: {variant.pk}",
+        f"SKU: {variant.sku or '—'}",
+    ]
+    try:
+        lines.append(f"Parametrlar: {variant.get_display_name()}")
+    except Exception:
+        pass
+    lines.append(f"Sotish narxi (USD): {variant.price}")
+    lines.append(f"Tannarx (USD): {variant.cost_price}")
+    lines.append(
+        f"Zaxira: {'cheksiz' if getattr(variant, 'unlimited_stock', False) else variant.stock_quantity}"
+    )
+    lines.append(f"Faol: {variant.is_active}")
+    return '\n'.join(str(x) for x in lines)
+
+
+def _product_delete_snapshot_text(product):
+    """Butun mahsulot (Product) o'chirishdan oldin — barcha variantlar."""
+    product = Product.objects.select_related('category').prefetch_related(
+        Prefetch('variants', queryset=ProductVariant.objects.prefetch_related('attribute_values__attribute'))
+    ).filter(pk=product.pk).first() or product
+    lines = [
+        f"Mahsulot DB ID: {product.pk}",
+        f"Nom: {product.name}",
+        f"Kategoriya: {product.category.name if product.category else '—'}",
+        f"O'lchov: {product.get_unit_display()}",
+        f"Tavsif: {(product.description or '')[:300]}{'…' if len(product.description or '') > 300 else ''}",
+    ]
+    vars_list = list(product.variants.all())
+    lines.append(f"Variantlar: {len(vars_list)} ta")
+    for v in vars_list:
+        try:
+            disp = v.get_display_name()
+        except Exception:
+            disp = '—'
+        lines.append(
+            f"  — var #{v.pk} | SKU {v.sku or '—'} | {disp} | ${v.price} | "
+            f"zaxira: {'∞' if getattr(v, 'unlimited_stock', False) else v.stock_quantity}"
+        )
+    return '\n'.join(str(x) for x in lines)
+
+
+def _expense_queryset_for_request(request, market):
+    """Filtrlangan rasxodlar queryset (GET parametrlari bo'yicha)."""
+    qs = Expense.objects.filter(market=market).select_related('category', 'created_by')
+    date_from = (request.GET.get('date_from') or '').strip()
+    date_to = (request.GET.get('date_to') or '').strip()
+    cat_id = (request.GET.get('category') or '').strip()
+    payment_method = (request.GET.get('payment_method') or '').strip()
+    q = (request.GET.get('q') or '').strip()
+
+    if date_from:
+        qs = qs.filter(expense_date__gte=date_from)
+    if date_to:
+        qs = qs.filter(expense_date__lte=date_to)
+    if cat_id == 'none':
+        qs = qs.filter(category__isnull=True)
+    elif cat_id.isdigit():
+        qs = qs.filter(category_id=int(cat_id))
+    if payment_method and payment_method in dict(Expense.PAYMENT_CHOICES):
+        qs = qs.filter(payment_method=payment_method)
+    if q:
+        qs = qs.filter(Q(title__icontains=q) | Q(notes__icontains=q))
+    return qs
+
+
 @require_market
+def expense_list(request):
+    """Rasxodlar: filtrlar, jamlanmalar (faqat menejer/admin), ro'yxat."""
+    market = get_request_market(request)
+    can_view_expense_stats = user_is_manager(request.user)
+
+    if can_view_expense_stats:
+        qs = _expense_queryset_for_request(request, market)
+    else:
+        qs = Expense.objects.filter(market=market).select_related('category', 'created_by')
+
+    pay_labels = dict(Expense.PAYMENT_CHOICES)
+    if can_view_expense_stats:
+        agg = qs.aggregate(s=Sum('amount_uzs'), c=Count('id'))
+        total_uzs = agg['s'] or Decimal('0')
+        count_rows = agg['c'] or 0
+        by_category = list(
+            qs.values('category_id', 'category__name')
+            .annotate(sum_uzs=Sum('amount_uzs'), cnt=Count('id'))
+            .order_by('-sum_uzs')[:20]
+        )
+        by_payment = []
+        for row in (
+            qs.values('payment_method')
+            .annotate(sum_uzs=Sum('amount_uzs'), cnt=Count('id'))
+            .order_by('-sum_uzs')
+        ):
+            by_payment.append({
+                'payment_method': row['payment_method'],
+                'sum_uzs': row['sum_uzs'],
+                'cnt': row['cnt'],
+                'label': pay_labels.get(row['payment_method'], row['payment_method']),
+            })
+        avg_uzs = (total_uzs / count_rows).quantize(Decimal('1')) if count_rows else Decimal('0')
+    else:
+        total_uzs = Decimal('0')
+        count_rows = 0
+        by_category = []
+        by_payment = []
+        avg_uzs = Decimal('0')
+
+    if can_view_expense_stats:
+        categories = ExpenseCategory.objects.filter(market=market).order_by('sort_order', 'name')
+    else:
+        categories = []
+
+    qs_ordered = qs.order_by('-expense_date', '-created_at')
+    paginator = Paginator(qs_ordered, 100)
+    page_obj = paginator.get_page(request.GET.get('page') or 1)
+    if can_view_expense_stats:
+        query_dict = request.GET.copy()
+        if 'page' in query_dict:
+            query_dict.pop('page')
+        query_string = query_dict.urlencode()
+    else:
+        query_string = ''
+
+    context = {
+        'expenses': page_obj.object_list,
+        'page_obj': page_obj,
+        'query_string': query_string,
+        'can_view_expense_stats': can_view_expense_stats,
+        'total_uzs': total_uzs,
+        'count_rows': count_rows,
+        'avg_uzs': avg_uzs,
+        'by_category': by_category,
+        'by_payment': by_payment,
+        'categories': categories,
+        'payment_labels': pay_labels,
+    }
+    return render(request, 'store/expense_list.html', context)
+
+
+@require_market
+def expense_create(request):
+    market = get_request_market(request)
+    if request.method == 'POST':
+        form = ExpenseForm(request.POST, market=market)
+        if form.is_valid():
+            expense = form.save(commit=False)
+            expense.market = market
+            expense.created_by = request.user
+            new_cat = (form.cleaned_data.get('new_category_name') or '').strip()
+            if new_cat:
+                cat, _ = ExpenseCategory.objects.get_or_create(
+                    market=market, name=new_cat, defaults={'sort_order': 0}
+                )
+                expense.category = cat
+            expense.save()
+            _log_expense(market, request.user, ProcessLog.ACTION_CREATE, expense, "Yangi rasxod qo'shildi.")
+            messages.success(request, "Rasxod saqlandi.")
+            return redirect('store:expense_list')
+    else:
+        form = ExpenseForm(market=market, initial={'expense_date': timezone.localdate()})
+    return render(request, 'store/expense_form.html', {'form': form, 'is_edit': False})
+
+
+@require_market
+def expense_edit(request, pk):
+    market = get_request_market(request)
+    expense = get_object_or_404(Expense, pk=pk, market=market)
+    if request.method == 'POST':
+        form = ExpenseForm(request.POST, instance=expense, market=market)
+        if form.is_valid():
+            old = {
+                'title': expense.title,
+                'notes': expense.notes or '',
+                'amount_uzs': expense.amount_uzs,
+                'expense_date': expense.expense_date,
+                'payment_method': expense.payment_method,
+                'category_name': _expense_category_name(expense),
+            }
+            expense = form.save(commit=False)
+            new_cat = (form.cleaned_data.get('new_category_name') or '').strip()
+            if new_cat:
+                cat, _ = ExpenseCategory.objects.get_or_create(
+                    market=market, name=new_cat, defaults={'sort_order': 0}
+                )
+                expense.category = cat
+            expense.save()
+            detail = _build_expense_edit_detail(old, expense)
+            _log_expense(market, request.user, ProcessLog.ACTION_EDIT, expense, detail)
+            messages.success(request, "Rasxod yangilandi.")
+            return redirect('store:expense_list')
+    else:
+        form = ExpenseForm(instance=expense, market=market)
+    return render(request, 'store/expense_form.html', {'form': form, 'is_edit': True, 'expense': expense})
+
+
+@require_market
+@require_http_methods(["POST"])
+def expense_delete(request, pk):
+    market = get_request_market(request)
+    expense = get_object_or_404(Expense, pk=pk, market=market)
+    tid = expense.id
+    _log_expense(
+        market, request.user, ProcessLog.ACTION_DELETE, expense,
+        f"O'chirildi. Summa: {expense.amount_uzs} so'm, sana: {expense.expense_date}.",
+    )
+    expense.delete()
+    messages.success(request, f"Rasxod #{tid} o'chirildi.")
+    q = request.GET.urlencode()
+    if q:
+        return redirect(f"{reverse('store:expense_list')}?{q}")
+    return redirect('store:expense_list')
+
+
+@require_market
+def expense_export_csv(request):
+    """Filtrlangan rasxodlarni CSV (UTF-8 BOM) — faqat menejerlar."""
+    if not user_is_manager(request.user):
+        messages.error(request, "CSV eksport faqat menejerlar uchun.")
+        return redirect('store:expense_list')
+    market = get_request_market(request)
+    qs = _expense_queryset_for_request(request, market).order_by('-expense_date', '-created_at')
+
+    buffer = io.StringIO()
+    buffer.write('\ufeff')
+    writer = csv.writer(buffer, delimiter=';')
+    writer.writerow([
+        'ID', 'Sana', 'Sarlavha', 'Kategoriya', "Summa (so'm)", "To'lov", 'Izoh', 'Kiritgan', 'Yaratilgan'
+    ])
+    pay_labels = dict(Expense.PAYMENT_CHOICES)
+    for e in qs:
+        writer.writerow([
+            e.id,
+            e.expense_date.isoformat() if e.expense_date else '',
+            e.title,
+            e.category.name if e.category else '',
+            str(int(e.amount_uzs or 0)),
+            pay_labels.get(e.payment_method, e.payment_method),
+            (e.notes or '').replace('\n', ' ').replace('\r', ''),
+            e.created_by.username if e.created_by else '',
+            e.created_at.strftime('%Y-%m-%d %H:%M') if e.created_at else '',
+        ])
+
+    response = HttpResponse(buffer.getvalue(), content_type='text/csv; charset=utf-8')
+    fname = f"rasxodlar_{timezone.localdate().isoformat()}.csv"
+    response['Content-Disposition'] = f'attachment; filename="{fname}"'
+    return response
+
+
+@require_market
+def process_history_list(request):
+    """Barcha jarayonlar tarixi — faqat menejerlar."""
+    if not user_is_manager(request.user):
+        messages.error(request, "Jarayonlar tarixi faqat menejerlar uchun.")
+        return redirect('store:expense_list')
+    market = get_request_market(request)
+    qs = ProcessLog.objects.filter(market=market).select_related('performed_by')
+    paginator = Paginator(qs, 100)
+    page_obj = paginator.get_page(request.GET.get('page') or 1)
+    query_dict = request.GET.copy()
+    if 'page' in query_dict:
+        query_dict.pop('page')
+    query_string = query_dict.urlencode()
+    return render(request, 'store/process_history_list.html', {
+        'logs': page_obj.object_list,
+        'page_obj': page_obj,
+        'query_string': query_string,
+        'entity_labels': dict(ProcessLog.ENTITY_CHOICES),
+        'action_labels': dict(ProcessLog.ACTION_CHOICES),
+    })
+
+
 def statistics(request):
     """Statistika: sotuvlar va qarzlar summasi (sana oralig'i bo'yicha yoki hammasi)."""
     if not user_is_manager(request.user):
@@ -2145,6 +2681,22 @@ def statistics(request):
                 total_profit_usd += (item.subtotal or Decimal('0')) - cost
         total_profit_uzs = total_profit_usd * current_usd_rate
 
+    total_expenses_uzs = Decimal('0')
+    if has_filter:
+        exp_qs = Expense.objects.filter(market=market)
+        if date_from:
+            exp_qs = exp_qs.filter(expense_date__gte=date_from)
+        if date_to:
+            exp_qs = exp_qs.filter(expense_date__lte=date_to)
+        total_expenses_uzs = exp_qs.aggregate(t=Sum('amount_uzs'))['t'] or Decimal('0')
+
+    total_expenses_usd_equiv = Decimal('0')
+    if current_usd_rate and current_usd_rate > 0:
+        total_expenses_usd_equiv = (total_expenses_uzs / current_usd_rate).quantize(Decimal('0.01'))
+
+    net_after_expenses_usd = total_profit_usd - total_expenses_usd_equiv
+    net_after_expenses_uzs = total_profit_uzs - total_expenses_uzs
+
     context = {
         'date_from': date_from,
         'date_to': date_to,
@@ -2154,6 +2706,10 @@ def statistics(request):
         'total_credit_uzs': total_credit_uzs,
         'total_profit_usd': total_profit_usd,
         'total_profit_uzs': total_profit_uzs,
+        'total_expenses_uzs': total_expenses_uzs,
+        'total_expenses_usd_equiv': total_expenses_usd_equiv,
+        'net_after_expenses_usd': net_after_expenses_usd,
+        'net_after_expenses_uzs': net_after_expenses_uzs,
         'current_usd_rate': current_usd_rate,
     }
     return render(request, 'store/statistics.html', context)

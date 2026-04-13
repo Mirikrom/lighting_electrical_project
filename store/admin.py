@@ -1,7 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Market, UserProfile, Category, Product, Attribute, AttributeValue, ProductVariant, Customer, Sale, SaleItem
+from .models import (
+    Market, UserProfile, Category, Product, Attribute, AttributeValue, ProductVariant,
+    Customer, Sale, SaleItem, Expense, ExpenseCategory, ProcessLog,
+)
 
 
 @admin.register(Market)
@@ -149,3 +152,39 @@ class SaleItemAdmin(admin.ModelAdmin):
     list_display = ['sale', 'variant', 'quantity', 'unit_price', 'subtotal']
     list_filter = ['sale__sale_date']
     search_fields = ['variant__product__name', 'variant__sku', 'sale__id']
+
+
+@admin.register(ExpenseCategory)
+class ExpenseCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'market', 'sort_order', 'created_at']
+    list_filter = ['market']
+    search_fields = ['name']
+
+
+@admin.register(Expense)
+class ExpenseAdmin(admin.ModelAdmin):
+    list_display = ['id', 'title', 'market', 'category', 'amount_uzs', 'expense_date', 'payment_method', 'created_by', 'created_at']
+    list_filter = ['market', 'expense_date', 'payment_method', 'category']
+    search_fields = ['title', 'notes']
+    readonly_fields = ['created_at']
+    date_hierarchy = 'expense_date'
+
+
+@admin.register(ProcessLog)
+class ProcessLogAdmin(admin.ModelAdmin):
+    list_display = ['performed_at', 'entity_type', 'action', 'entity_id', 'title_snapshot', 'performed_by', 'market']
+    list_filter = ['entity_type', 'action', 'market', 'performed_at']
+    search_fields = ['title_snapshot', 'detail_text', 'performed_by__username']
+    readonly_fields = [
+        'market', 'entity_type', 'action', 'entity_id', 'title_snapshot', 'detail_text',
+        'performed_by', 'performed_at',
+    ]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser

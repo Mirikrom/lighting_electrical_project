@@ -330,3 +330,118 @@ class DebtPayment(models.Model):
 
     def __str__(self):
         return f"Sotuv #{self.sale_id}: {self.amount_original} {self.currency}"
+
+
+class ExpenseCategory(models.Model):
+    """Rasxod turi (market bo'yicha)."""
+    market = models.ForeignKey(Market, on_delete=models.CASCADE, related_name='expense_categories', verbose_name="Market")
+    name = models.CharField(max_length=120, verbose_name="Kategoriya nomi")
+    sort_order = models.PositiveSmallIntegerField(default=0, verbose_name="Tartib")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Rasxod kategoriyasi"
+        verbose_name_plural = "Rasxod kategoriyalari"
+        ordering = ['sort_order', 'name']
+        constraints = [
+            models.UniqueConstraint(fields=['market', 'name'], name='unique_expense_category_per_market'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class Expense(models.Model):
+    """Do'kon rasxodi — summa faqat so'mda."""
+    PAYMENT_CHOICES = [
+        ('cash', 'Naqd'),
+        ('card', 'Karta'),
+        ('transfer', "O'tkazma"),
+        ('other', 'Boshqa'),
+    ]
+
+    market = models.ForeignKey(Market, on_delete=models.CASCADE, related_name='expenses', verbose_name="Market")
+    category = models.ForeignKey(
+        ExpenseCategory, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='expenses', verbose_name="Kategoriya"
+    )
+    title = models.CharField(max_length=200, verbose_name="Sarlavha")
+    notes = models.TextField(blank=True, verbose_name="Izoh")
+    amount_uzs = models.DecimalField(
+        max_digits=18, decimal_places=0, validators=[MinValueValidator(Decimal('1'))],
+        verbose_name="Summa (so'm)"
+    )
+    expense_date = models.DateField(verbose_name="Rasxod sanasi")
+    payment_method = models.CharField(
+        max_length=20, choices=PAYMENT_CHOICES, default='cash', verbose_name="To'lov turi"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='created_expenses', verbose_name="Kiritgan"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Rasxod"
+        verbose_name_plural = "Rasxodlar"
+        ordering = ['-expense_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.title} — {self.amount_uzs} so'm"
+
+
+class ProcessLog(models.Model):
+    """Barcha muhim jarayonlar tarixi (faqat menejerlar ko'radi)."""
+    ENTITY_EXPENSE = 'expense'
+    ENTITY_SALE = 'sale'
+    ENTITY_PRODUCT = 'product'
+    ENTITY_CUSTOMER = 'customer'
+    ENTITY_DEBT_PAYMENT = 'debt_payment'
+    ENTITY_EXCHANGE_RATE = 'exchange_rate'
+    ENTITY_CHOICES = [
+        (ENTITY_EXPENSE, 'Rasxod'),
+        (ENTITY_SALE, 'Sotuv'),
+        (ENTITY_PRODUCT, 'Mahsulot / variant'),
+        (ENTITY_CUSTOMER, 'Mijoz'),
+        (ENTITY_DEBT_PAYMENT, 'Qarz to\'lovi'),
+        (ENTITY_EXCHANGE_RATE, 'Valyuta kursi'),
+    ]
+
+    ACTION_CREATE = 'create'
+    ACTION_EDIT = 'edit'
+    ACTION_DELETE = 'delete'
+    ACTION_RETURN = 'return'
+    ACTION_APPEND = 'append'
+    ACTION_PAY = 'pay'
+    ACTION_CANCEL_PAY = 'cancel_pay'
+    ACTION_CHOICES = [
+        (ACTION_CREATE, 'Yaratildi'),
+        (ACTION_EDIT, 'Tahrirlandi'),
+        (ACTION_DELETE, "O'chirildi"),
+        (ACTION_RETURN, 'Qaytarilgan'),
+        (ACTION_APPEND, "Qo'shildi (sotuvga)"),
+        (ACTION_PAY, "To'lov"),
+        (ACTION_CANCEL_PAY, "To'lov bekor"),
+    ]
+
+    market = models.ForeignKey(
+        Market, on_delete=models.CASCADE, related_name='process_logs', verbose_name="Market"
+    )
+    entity_type = models.CharField(max_length=24, choices=ENTITY_CHOICES, verbose_name="Ob'ekt")
+    action = models.CharField(max_length=16, choices=ACTION_CHOICES, verbose_name="Harakat")
+    entity_id = models.PositiveIntegerField(verbose_name="ID #")
+    title_snapshot = models.CharField(max_length=300, verbose_name="Qisqa mazmun")
+    detail_text = models.TextField(blank=True, verbose_name="Batafsil")
+    performed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='process_logs_done', verbose_name="Kim qildi"
+    )
+    performed_at = models.DateTimeField(auto_now_add=True, verbose_name="Vaqt")
+
+    class Meta:
+        ordering = ['-performed_at']
+        verbose_name = 'Jarayon yozuvi'
+        verbose_name_plural = 'Jarayonlar tarixi'
+
+    def __str__(self):
+        return f"{self.get_entity_type_display()} #{self.entity_id} — {self.get_action_display()}"

@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% load store_tags %}
+
+{% block title %}Jarayonlar tarixi - Lustra & Lempala{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <h1 class="display-5 fw-bold mb-0">
+        <i class="bi bi-journal-text"></i> Jarayonlar tarixi
+    </h1>
+    <a href="{% url 'store:expense_list' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-wallet2"></i> Rasxodlar
+    </a>
+</div>
+
+<p class="text-muted mb-4">Sotuvlar, mahsulotlar, mijozlar, qarz to'lovlari, rasxodlar va kurs o'zgarishlari — kim va qachon bajarilgani.</p>
+
+<div class="table-responsive card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>Vaqt</th>
+                    <th>Turi</th>
+                    <th>Harakat</th>
+                    <th>ID</th>
+                    <th>Mazmun</th>
+                    <th>Kim</th>
+                    <th>Batafsil</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td class="text-nowrap">{{ log.performed_at|date:"d.m.Y H:i" }}</td>
+                    <td><span class="badge bg-secondary">{{ entity_labels|dict_get:log.entity_type }}</span></td>
+                    <td>
+                        {% if log.action == 'create' %}
+                        <span class="badge bg-success">{{ action_labels|dict_get:log.action }}</span>
+                        {% elif log.action == 'delete' or log.action == 'cancel_pay' %}
+                        <span class="badge bg-danger">{{ action_labels|dict_get:log.action }}</span>
+                        {% elif log.action == 'edit' or log.action == 'append' or log.action == 'pay' %}
+                        <span class="badge bg-primary">{{ action_labels|dict_get:log.action }}</span>
+                        {% elif log.action == 'return' %}
+                        <span class="badge bg-warning text-dark">{{ action_labels|dict_get:log.action }}</span>
+                        {% else %}
+                        <span class="badge bg-info text-dark">{{ action_labels|dict_get:log.action }}</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>#{{ log.entity_id }}</strong></td>
+                    <td style="max-width: 220px;">{{ log.title_snapshot }}</td>
+                    <td>{{ log.performed_by.username|default:"—" }}</td>
+                    <td style="max-width: 340px;">
+                        {% if log.detail_text %}
+                        <small class="text-muted" style="white-space: pre-wrap;">{{ log.detail_text }}</small>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center py-5 text-muted">Hozircha yozuvlar yo'q.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% include 'store/_pagination.html' with page_obj=page_obj query_string=query_string %}
+{% endblock %}

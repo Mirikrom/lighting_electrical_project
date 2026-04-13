@@ -1,0 +1,224 @@
+{% extends 'base.html' %}
+{% load store_tags %}
+
+{% block title %}Rasxodlar - Lustra & Lempala{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <h1 class="display-5 fw-bold mb-0">
+        <i class="bi bi-wallet2"></i> Rasxodlar
+    </h1>
+    <div class="d-flex flex-wrap gap-2">
+        {% if can_view_expense_stats %}
+        <a href="{% url 'store:process_history_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-journal-text"></i> Jarayonlar tarixi
+        </a>
+        <a href="{% url 'store:expense_export_csv' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-primary">
+            <i class="bi bi-download"></i> CSV eksport
+        </a>
+        {% endif %}
+        <a href="{% url 'store:expense_create' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Yangi rasxod
+        </a>
+    </div>
+</div>
+
+{% if can_view_expense_stats %}
+<div class="filter-section mb-4">
+    <form method="get" class="row g-3">
+        <div class="col-md-6 col-lg-3">
+            <label class="form-label">Sanadan</label>
+            <input type="date" name="date_from" class="form-control" value="{{ request.GET.date_from }}">
+        </div>
+        <div class="col-md-6 col-lg-3">
+            <label class="form-label">Sanagacha</label>
+            <input type="date" name="date_to" class="form-control" value="{{ request.GET.date_to }}">
+        </div>
+        <div class="col-md-6 col-lg-2">
+            <label class="form-label">Kategoriya</label>
+            <select name="category" class="form-select">
+                <option value="">Barchasi</option>
+                <option value="none" {% if request.GET.category == 'none' %}selected{% endif %}>Kategoriyasiz</option>
+                {% for c in categories %}
+                <option value="{{ c.pk }}" {% if request.GET.category == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6 col-lg-2">
+            <label class="form-label">To'lov turi</label>
+            <select name="payment_method" class="form-select">
+                <option value="">Barchasi</option>
+                {% for val, label in payment_labels.items %}
+                <option value="{{ val }}" {% if request.GET.payment_method == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-lg-2">
+            <label class="form-label">Qidiruv</label>
+            <input type="search" name="q" class="form-control" value="{{ request.GET.q }}">
+        </div>
+        <div class="col-12">
+            <div class="d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-funnel"></i> Filtrlash
+                </button>
+                <a href="{% url 'store:expense_list' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-clockwise"></i> Tozalash
+                </a>
+            </div>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+{% if can_view_expense_stats %}
+<div class="row g-3 mb-4">
+    <div class="col-md-6 col-xl-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small fw-semibold text-uppercase">Jami rasxod (so'm)</div>
+                <div class="fs-3 fw-bold text-danger">{{ total_uzs|floatformat:0|intdot }} so'm</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small fw-semibold text-uppercase">Yozuvlar soni</div>
+                <div class="fs-3 fw-bold text-dark">{{ count_rows }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small fw-semibold text-uppercase">O'rtacha (so'm)</div>
+                <div class="fs-3 fw-bold text-primary">{{ avg_uzs|floatformat:0|intdot }} so'm</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-header bg-gradient text-white" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none;">
+                <strong><i class="bi bi-pie-chart"></i> Kategoriya bo'yicha</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Kategoriya</th>
+                                <th class="text-end">Summa (so'm)</th>
+                                <th class="text-end">Soni</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in by_category %}
+                            <tr>
+                                <td>{{ row.category__name|default:"Kategoriyasiz" }}</td>
+                                <td class="text-end fw-semibold">{{ row.sum_uzs|floatformat:0|intdot }}</td>
+                                <td class="text-end">{{ row.cnt }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center text-muted py-4">Ma'lumot yo'q</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-header bg-gradient text-white" style="background: linear-gradient(135deg, #0d9488, #14b8a6); border: none;">
+                <strong><i class="bi bi-credit-card-2-front"></i> To'lov turi bo'yicha</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>To'lov</th>
+                                <th class="text-end">Summa (so'm)</th>
+                                <th class="text-end">Soni</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in by_payment %}
+                            <tr>
+                                <td>{{ row.label }}</td>
+                                <td class="text-end fw-semibold">{{ row.sum_uzs|floatformat:0|intdot }}</td>
+                                <td class="text-end">{{ row.cnt }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center text-muted py-4">Ma'lumot yo'q</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="table-responsive card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th>Sana</th>
+                    <th>Sarlavha</th>
+                    <th>Kategoriya</th>
+                    <th>Summa</th>
+                    <th>To'lov</th>
+                    <th>Kiritgan</th>
+                    <th>Amallar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in expenses %}
+                <tr>
+                    <td>{{ e.expense_date|date:"d.m.Y" }}</td>
+                    <td>
+                        <strong>{{ e.title }}</strong>
+                        {% if e.notes %}
+                        <br><small class="text-muted">{{ e.notes|truncatechars:60 }}</small>
+                        {% endif %}
+                    </td>
+                    <td>{% if e.category %}<span class="badge bg-secondary">{{ e.category.name }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td>
+                        <strong class="text-danger">{{ e.amount_uzs|floatformat:0|intdot }} so'm</strong>
+                    </td>
+                    <td>{{ payment_labels|dict_get:e.payment_method }}</td>
+                    <td>{{ e.created_by.username|default:"—" }}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'store:expense_edit' e.pk %}" class="btn btn-outline-primary" title="Tahrirlash">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="post" action="{% url 'store:expense_delete' e.pk %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="d-inline" onsubmit="return confirm('Rasxodni o\'chirishni tasdiqlaysizmi?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-outline-danger" title="O'chirish"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center py-5 text-muted">
+                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        Rasxod yozuvlari yo'q. <a href="{% url 'store:expense_create' %}">Birinchi yozuvni qo'shing</a>.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% include 'store/_pagination.html' with page_obj=page_obj query_string=query_string %}
+{% endblock %}

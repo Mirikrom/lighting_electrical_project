@@ -4,6 +4,17 @@ register = template.Library()
 
 
 @register.filter
+def dict_get(mapping, key):
+    """Template ichida dict kalit bo'yicha qiymat: {{ payment_labels|dict_get:e.payment_method }}."""
+    if mapping is None:
+        return ''
+    try:
+        return mapping.get(key, key)
+    except (AttributeError, TypeError):
+        return key
+
+
+@register.filter
 def divide(value, arg):
     """value / arg. Avoid division by zero."""
     if arg is None or arg == 0:
