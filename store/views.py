@@ -994,6 +994,8 @@ def create_sale(request):
                                 market, request.user, ProcessLog.ENTITY_CUSTOMER, ProcessLog.ACTION_CREATE,
                                 customer.pk, f"Yangi mijoz: {customer.name}", "Telefon kiritilmagan",
                             )
+                if payment_method == 'credit' and not customer:
+                    return JsonResponse({'error': "Qarzga sotuv uchun mijozni kiriting."}, status=400)
                 
                 usd_rate = data.get('usd_rate')
                 sale_kwargs = dict(
@@ -1212,13 +1214,25 @@ def create_sale(request):
                     product = item.variant.product if item.variant else getattr(item, 'product_old', None)
                     unit = getattr(product, 'unit', 'dona') if product else 'dona'
                     name = str(item.variant) if item.variant else (getattr(product, 'name', '') or '')
-                    stock = item.variant.stock_quantity if item.variant else 0
+                    if item.variant:
+                        db_stock = item.variant.stock_quantity
+                        # Edit rejimida eski miqdor qaytarilib keyin qayta yoziladi,
+                        # shuning uchun maksimal ruxsat = bazadagi qoldiq + eski sotilgan miqdor.
+                        if getattr(item.variant, 'unlimited_stock', False):
+                            stock_limit = 999999
+                            db_stock = 999999
+                        else:
+                            stock_limit = max(0, db_stock + item.quantity)
+                    else:
+                        db_stock = 0
+                        stock_limit = item.quantity
                     edit_sale_items.append({
                         'product_id': item.variant_id,
                         'name': name,
                         'price': float(item.unit_price),
                         'quantity': item.quantity,
-                        'stock': stock,
+                        'stock': stock_limit,
+                        'db_stock': db_stock,
                         'unit': unit,
                     })
         except (TypeError, ValueError):
@@ -1747,6 +1761,8 @@ def edit_sale(request, pk):
         payment_method = data.get('payment_method')
         payment_cash_usd = data.get('payment_cash_usd')
         payment_card_usd = data.get('payment_card_usd')
+        customer_name = (data.get('customer_name') or '').strip()
+        customer_phone = (data.get('customer_phone') or '').strip()
         if not items:
             return JsonResponse({'error': "Mahsulotlar ro'yxati bo'sh."}, status=400)
 
@@ -1754,6 +1770,27 @@ def edit_sale(request, pk):
             sale = get_object_or_404(Sale.objects.select_for_update(), pk=pk, market=market)
             if sale.status != 'completed':
                 return JsonResponse({'error': "Faqat yakunlangan sotuvni tahrirlash mumkin."}, status=400)
+
+            # Mijozni yangilash: edit rejimida ham customer_name/customer_phone saqlansin
+            customer = sale.customer
+            if customer_name:
+                if customer_phone:
+                    customer, _ = Customer.objects.get_or_create(
+                        market=market,
+                        phone=customer_phone,
+                        defaults={'name': customer_name}
+                    )
+                    if customer.name != customer_name:
+                        customer.name = customer_name
+                        customer.save(update_fields=['name'])
+                else:
+                    customer, _ = Customer.objects.get_or_create(
+                        market=market,
+                        name=customer_name,
+                        defaults={'phone': ''}
+                    )
+            elif payment_method == 'credit' and not customer:
+                return JsonResponse({'error': "Qarzga sotuv uchun mijozni kiriting."}, status=400)
 
             # Eski mahsulotlarni omborga qaytaramiz
             for item in sale.items.select_related('variant'):
@@ -1825,6 +1862,7 @@ def edit_sale(request, pk):
             sale.total_amount = total
             if payment_method:
                 sale.payment_method = payment_method
+            sale.customer = customer
 
             # To'lov bo'linmasi (USD)
             cash_amt = Decimal('0')
@@ -1853,7 +1891,7 @@ def edit_sale(request, pk):
 
             sale.payment_cash_amount = cash_amt
             sale.payment_card_amount = card_amt
-            sale.save(update_fields=['total_amount', 'original_total_amount', 'discount_percent', 'payment_method', 'payment_cash_amount', 'payment_card_amount'])
+            sale.save(update_fields=['customer', 'total_amount', 'original_total_amount', 'discount_percent', 'payment_method', 'payment_cash_amount', 'payment_card_amount'])
 
         logger.info(f"Sale edited: {sale.id}, New total: ${total} USD")
         pay_lab = dict(Sale.PAYMENT_METHODS)

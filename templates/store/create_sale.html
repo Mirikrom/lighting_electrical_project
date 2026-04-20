@@ -1215,10 +1215,10 @@
     </div>
 </div>
 
-<!-- Customer Modal (mijoz ixtiyoriy — kiritmasa mijozsiz sotuv) -->
+<!-- Customer Modal (qarzga bo'lsa majburiy, qolgan to'lovlarda ixtiyoriy) -->
 <div id="customerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
     <div style="background: white; padding: 30px; border-radius: 10px; max-width: 500px; width: 90%; position: relative;">
-        <h3 style="margin-top: 0; margin-bottom: 20px;">Mijoz ma'lumotlari <span style="font-size: 13px; font-weight: normal; color: #64748b;">(ixtiyoriy)</span></h3>
+        <h3 style="margin-top: 0; margin-bottom: 20px;">Mijoz ma'lumotlari <span id="customerModalModeHint" style="font-size: 13px; font-weight: normal; color: #64748b;">(ixtiyoriy)</span></h3>
         <div style="margin-bottom: 15px;">
             <label style="display: block; margin-bottom: 5px; font-weight: 600;">Mijoz nomi:</label>
             <div style="position: relative;">
@@ -1450,12 +1450,15 @@
     // Agar tahrirlash rejimida bo'lsak, mavjud sotuvdagi mahsulotlarni korzinkaga yuklaymiz
     if (EDIT_SALE_ID && editSaleItems.length > 0) {
         cart = editSaleItems.map(function(item) {
+            const stockLimit = parseInt(item.stock, 10) || 0;
+            const dbStock = item.db_stock != null ? (parseInt(item.db_stock, 10) || 0) : stockLimit;
             return {
                 product_id: item.product_id,
                 name: item.name,
                 price: parseFloat(item.price) || 0,
                 quantity: parseInt(item.quantity, 10) || 1,
-                stock: parseInt(item.stock, 10) || 0,
+                stock: stockLimit,
+                db_stock: dbStock,
                 unit: item.unit || 'dona'
             };
         });
@@ -1829,9 +1832,15 @@
         const existingItem = cart.find(item => item.product_id === productId);
         
         if (existingItem) {
+            if (!Number.isFinite(existingItem.stock) || existingItem.stock < productStock) {
+                existingItem.stock = productStock;
+            }
+            if (existingItem.db_stock == null) {
+                existingItem.db_stock = productStock;
+            }
             const newQuantity = existingItem.quantity + quantity;
-            if (newQuantity > productStock) {
-                showAppAlert('Yetarli mahsulot yo\'q', 'Mavjud: ' + productStock + ' ' + unitLabel + ', Savatda: ' + existingItem.quantity, 'warning');
+            if (newQuantity > existingItem.stock) {
+                showAppAlert('Yetarli mahsulot yo\'q', 'Mavjud: ' + existingItem.stock + ' ' + unitLabel + ', Savatda: ' + existingItem.quantity, 'warning');
                 return;
             }
             existingItem.quantity = newQuantity;
@@ -1842,6 +1851,7 @@
                 price: priceUsd,
                 quantity: quantity,
                 stock: productStock,
+                db_stock: productStock,
                 unit: productUnit
             });
         }
@@ -1907,6 +1917,7 @@
             const priceSoom = item.price * usdRate;
             const subtotalSoom = item.price * item.quantity * usdRate;
             const remainingStock = item.stock - item.quantity;
+            const dbStock = item.db_stock != null ? item.db_stock : item.stock;
             html += `
                 <tr>
                     <td>${index + 1}</td>
@@ -1918,7 +1929,7 @@
                              style="cursor: pointer; position: relative;">
                             ${item.name}
                             <span class="stock-tooltip" id="tooltip-${index}" style="display: none; position: absolute; background: #1f2937; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 1000; top: 100%; left: 0; margin-top: 5px; white-space: nowrap;">
-                                Qolgan: ${remainingStock} ${unitLabel} (Bazada: ${item.stock} ${unitLabel})
+                                Qolgan: ${remainingStock} ${unitLabel} (Bazada: ${dbStock} ${unitLabel})
                             </span>
                         </div>
                     </td>
@@ -2176,6 +2187,10 @@
         } else {
             mixedPayment.is_set = false;
         }
+    }
+
+    function isCustomerRequired() {
+        return selectedPaymentMethod === 'credit';
     }
 
     function getTotalUSDValue() {
@@ -2465,16 +2480,13 @@
     }
     
     function showCustomerModal() {
-        if (EDIT_SALE_ID) {
-            // Tahrirlash rejimida mijoz allaqachon ma'lum — modal ochilmaydi
-            proceedWithOrder('', '').catch(function(err) {
-                console.error('Sotuv yuborishda xatolik (edit mode):', err);
-                showAppAlert('Xatolik', err && err.message ? err.message : String(err), 'error');
-            });
-            return;
-        }
         const modal = document.getElementById('customerModal');
+        const modeHint = document.getElementById('customerModalModeHint');
         if (modal) modal.style.display = 'flex';
+        if (modeHint) {
+            modeHint.textContent = isCustomerRequired() ? '(qarzga uchun majburiy)' : '(ixtiyoriy)';
+            modeHint.style.color = isCustomerRequired() ? '#b91c1c' : '#64748b';
+        }
         if (customerNameInput) customerNameInput.value = '';
         if (customerPhoneInput) customerPhoneInput.value = '';
         selectedCustomer = null;
@@ -2498,6 +2510,11 @@
         const phoneEl = document.getElementById('customerPhoneInput');
         const customerName = nameEl ? nameEl.value.trim() : '';
         const customerPhone = phoneEl ? phoneEl.value.trim() : '';
+        if (isCustomerRequired() && !customerName) {
+            showAppAlert('Mijoz kerak', "Qarzga sotuv uchun mijoz nomini kiriting yoki ro'yxatdan tanlang.", 'warning');
+            if (nameEl) nameEl.focus();
+            return;
+        }
         closeCustomerModal();
         proceedWithOrder(customerName, customerPhone).catch(function(err) {
             console.error('Sotuv yuborishda xatolik:', err);
