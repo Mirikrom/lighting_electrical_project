@@ -2034,7 +2034,7 @@
         }
     }
     
-    // Korzinkada narxni o'zgartirish — birlik narxiga bosganda input ochiladi, Saqlashda bazada ham yangilanadi
+    // Korzinkada narxni o'zgartirish — faqat joriy savat uchun (bazadagi variant narxi o'zgarmaydi)
     function startEditPrice(cartIndex) {
         const cell = document.querySelector(`.price-edit-cell[data-cart-index="${cartIndex}"]`);
         if (!cell || !cart[cartIndex]) return;
@@ -2057,7 +2057,7 @@
         updateOrderTable();
     }
     
-    async function savePriceEdit(cartIndex) {
+    function savePriceEdit(cartIndex) {
         const input = document.getElementById(`price-edit-input-${cartIndex}`);
         if (!input || !cart[cartIndex]) return;
         const newPriceUsd = parseFloat(input.value);
@@ -2065,37 +2065,9 @@
             showAppAlert('Xatolik', 'Noto\'g\'ri narx', 'error');
             return;
         }
-        const variantId = cart[cartIndex].product_id;
-        const usdRate = parseFloat(document.getElementById('usdRate')?.value) || 12500;
-        try {
-            const res = await fetch(`{% url 'store:update_variant_price' variant_id=0 %}`.replace('/0/', '/' + variantId + '/'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-                body: JSON.stringify({ price_usd: newPriceUsd })
-            });
-            const data = await res.json();
-            if (data.success) {
-                cart[cartIndex].price = newPriceUsd;
-                document.querySelectorAll(`[data-variant-id="${variantId}"]`).forEach(btn => btn.setAttribute('data-variant-price', String(newPriceUsd)));
-                updateOrderTable();
-                updateQuickProducts();
-            } else {
-                showAppAlert('Xatolik', data.error || 'Narxni saqlashda xatolik', 'error');
-            }
-        } catch (e) {
-            console.error(e);
-            showAppAlert('Xatolik', 'Narxni saqlashda xatolik', 'error');
-        }
-    }
-    
-    function getCsrfToken() {
-        const name = 'csrftoken';
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const c = cookies[i].trim();
-            if (c.indexOf(name + '=') === 0) return c.substring(name.length + 1);
-        }
-        return '';
+        cart[cartIndex].price = newPriceUsd;
+        updateOrderTable();
+        updateQuickProducts();
     }
     
     // Update quick products stock display based on cart (faqat bitta variantli tugmalar)
