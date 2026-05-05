@@ -262,6 +262,17 @@
         resize: vertical;
         min-height: 80px;
     }
+
+    /* Number inputlarda brauzer spinner tugmalarini yashirish */
+    input[type=number]::-webkit-outer-spin-button,
+    input[type=number]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    input[type=number] {
+        -moz-appearance: textfield;
+    }
     
     /* Autocomplete styles */
     .autocomplete-container {
@@ -1459,5 +1470,12 @@
         stockQtyInput.addEventListener('focus', function() { this.classList.remove('is-invalid'); });
         stockQtyInput.addEventListener('input', function() { this.classList.remove('is-invalid'); });
     }
+
+    // Number inputlarda sichqoncha g'ildiragi bilan qiymat o'zgarishini bloklash
+    document.querySelectorAll('#productForm input[type="number"]').forEach(function(numberInput) {
+        numberInput.addEventListener('wheel', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+    });
 </script>
 {% endblock %}
