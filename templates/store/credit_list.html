@@ -15,6 +15,27 @@
     .customer-debt-table td:first-child strong {
         color: #1d4ed8;
     }
+    .credit-list-table { min-width: 780px; }
+    .credit-list-actions {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+    }
+    @media (max-width: 768px) {
+        .credit-list-table { min-width: 720px; font-size: 0.78rem; }
+        .credit-list-table th,
+        .credit-list-table td { padding: 0.45rem 0.5rem !important; }
+        .credit-list-actions {
+            flex-direction: column;
+            gap: 4px;
+        }
+        .credit-list-actions .btn {
+            width: 100%;
+            font-size: 0.7rem;
+            padding: 0.25rem 0.4rem;
+        }
+        .customer-debt-table { font-size: 0.85rem; }
+    }
 </style>
 {% endblock %}
 
@@ -126,7 +147,7 @@
 
 <!-- Credits Table -->
 <div class="table-responsive">
-    <table class="table table-hover">
+    <table class="table table-hover credit-list-table">
         <thead class="table-dark">
             <tr>
                 <th>ID</th>
@@ -165,17 +186,19 @@
                 </td>
                 <td>{{ credit.created_by.username|default:"-" }}</td>
                 <td>
-                    {% if credit.customer %}
-                    <a href="{% url 'store:credit_customer_detail' credit.customer.id %}" class="btn btn-sm btn-warning">
-                        <i class="bi bi-cash-coin"></i> To'lov
-                    </a>
-                    {% endif %}
-                    <a href="{% url 'store:sale_detail' credit.pk %}" class="btn btn-sm btn-primary">
-                        <i class="bi bi-eye"></i> Ko'rish
-                    </a>
-                    <a href="{% url 'store:print_receipt' credit.pk %}" class="btn btn-sm btn-success" target="_blank">
-                        <i class="bi bi-printer"></i> Chek
-                    </a>
+                    <div class="credit-list-actions">
+                        {% if credit.customer %}
+                        <a href="{% url 'store:credit_customer_detail' credit.customer.id %}" class="btn btn-sm btn-warning">
+                            <i class="bi bi-cash-coin"></i> To'lov
+                        </a>
+                        {% endif %}
+                        <a href="{% url 'store:sale_detail' credit.pk %}" class="btn btn-sm btn-primary">
+                            <i class="bi bi-eye"></i> Ko'rish
+                        </a>
+                        <a href="{% url 'store:print_receipt' credit.pk %}" class="btn btn-sm btn-success" target="_blank">
+                            <i class="bi bi-printer"></i> Chek
+                        </a>
+                    </div>
                 </td>
             </tr>
             {% empty %}

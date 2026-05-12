@@ -3,6 +3,19 @@
 
 {% block title %}Rasxodlar - Lustra & Lempala{% endblock %}
 
+{% block extra_css %}
+<style>
+    .expense-list-table { min-width: 760px; }
+    @media (max-width: 768px) {
+        .expense-list-table { font-size: 0.78rem; }
+        .expense-list-table th,
+        .expense-list-table td { padding: 0.45rem 0.5rem !important; }
+        .expense-list-table .btn-group { display: inline-flex; }
+        .expense-list-table .btn { padding: 4px 8px; font-size: 0.7rem; }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
     <h1 class="display-5 fw-bold mb-0">
@@ -165,9 +178,10 @@
 </div>
 {% endif %}
 
-<div class="table-responsive card border-0 shadow-sm">
+<div class="card border-0 shadow-sm">
     <div class="card-body p-0">
-        <table class="table table-hover mb-0">
+        <div class="table-responsive">
+        <table class="table table-hover mb-0 expense-list-table">
             <thead class="table-dark">
                 <tr>
                     <th>Sana</th>
@@ -217,6 +231,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 

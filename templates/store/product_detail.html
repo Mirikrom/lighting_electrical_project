@@ -84,6 +84,51 @@
     font-size: 12px;
     color: #475569;
 }
+
+.variants-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.variants-table {
+    min-width: 660px;
+}
+
+@media (max-width: 768px) {
+    .product-detail-image-wrap {
+        max-height: 280px;
+        margin-bottom: 12px;
+    }
+    .product-detail-image {
+        max-height: 280px;
+    }
+    .product-detail-card {
+        padding: 1rem;
+    }
+    .product-detail-title {
+        font-size: 1.2rem;
+    }
+    .variants-table {
+        font-size: 0.78rem;
+        min-width: 640px;
+    }
+    .variants-table thead th,
+    .variants-table tbody td {
+        padding: 0.4rem 0.45rem !important;
+    }
+    .variants-table .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.7rem;
+    }
+    .variants-table .badge-color,
+    .variants-table .badge-param {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.4rem;
+    }
+    #imagePickModal > div {
+        width: 95% !important;
+        max-width: 95% !important;
+    }
+}
 </style>
 {% endblock %}
 
@@ -126,7 +171,7 @@
         {% if all_variants %}
         <div class="mb-4 mt-4">
             <h5 class="mb-3" style="font-size: 1.05rem; color: #334155;"><i class="bi bi-palette"></i> Barcha variantlar</h5>
-            <div class="table-responsive">
+            <div class="table-responsive variants-table-wrap">
                 <table class="table table-bordered variants-table">
                     <thead>
                         <tr>

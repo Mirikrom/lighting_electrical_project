@@ -41,6 +41,31 @@
         from { transform: translateY(-8px); opacity: 0; }
         to { transform: translateY(0); opacity: 1; }
     }
+    .debt-payment-history-table { min-width: 720px; }
+    .debt-credit-rows-table { min-width: 560px; }
+    @media (max-width: 768px) {
+        .pretty-error-alert {
+            right: 10px;
+            left: 10px;
+            top: 10px;
+            min-width: auto;
+            max-width: calc(100% - 20px);
+        }
+        .debt-payment-history-table,
+        .debt-credit-rows-table {
+            font-size: 0.78rem;
+        }
+        .debt-payment-history-table th,
+        .debt-payment-history-table td,
+        .debt-credit-rows-table th,
+        .debt-credit-rows-table td {
+            padding: 0.4rem 0.5rem !important;
+        }
+        .debt-payment-form > [class*="col-"] {
+            flex: 0 0 100%;
+            max-width: 100%;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -125,7 +150,7 @@
     </div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-hover align-middle">
+            <table class="table table-hover align-middle debt-credit-rows-table">
                 <thead>
                     <tr>
                         <th>Sotuv</th>
@@ -165,7 +190,7 @@
     </div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle">
+            <table class="table table-sm table-hover align-middle debt-payment-history-table">
                 <thead>
                     <tr>
                         <th>Sana/soat</th>

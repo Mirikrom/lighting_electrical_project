@@ -3,6 +3,36 @@
 
 {% block title %}Statistika - Lustra & Lempala{% endblock %}
 
+{% block extra_css %}
+<style>
+    .stat-amount-usd {
+        font-size: 28px;
+        font-weight: 800;
+        color: #111827;
+        line-height: 1.1;
+        word-break: break-all;
+    }
+    .stat-amount-uzs {
+        margin-top: 6px;
+        font-weight: 600;
+        color: #6b7280;
+        word-break: break-all;
+    }
+    @media (max-width: 768px) {
+        .stat-amount-usd { font-size: 1.4rem; }
+        .stat-amount-uzs { font-size: 0.85rem; }
+        .statistics-card .card-header {
+            padding: 0.6rem 0.8rem;
+        }
+        .statistics-card .card-header strong {
+            font-size: 0.85rem;
+            display: block;
+        }
+        .statistics-card .card-body { padding: 0.9rem; }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <h1 class="display-5 fw-bold mb-4">
     <i class="bi bi-graph-up"></i> Statistika
@@ -18,12 +48,12 @@
             <label class="form-label">Tugash sanasi</label>
             <input type="date" name="date_to" class="form-control" value="{{ date_to }}">
         </div>
-        <div class="col-md-2 d-flex align-items-end">
-            <div class="d-grid gap-2 w-100">
-                <button type="submit" class="btn btn-primary">
+        <div class="col-md-4 d-flex align-items-end">
+            <div class="d-grid d-md-flex gap-2 w-100">
+                <button type="submit" class="btn btn-primary w-100">
                     <i class="bi bi-funnel"></i> Ko'rish
                 </button>
-                <a href="{% url 'store:statistics' %}" class="btn btn-outline-secondary">
+                <a href="{% url 'store:statistics' %}" class="btn btn-outline-secondary w-100">
                     <i class="bi bi-arrow-clockwise"></i> Hammasi
                 </a>
             </div>
@@ -33,8 +63,8 @@
 
 {% if date_from or date_to %}
 <div class="row g-3">
-    <div class="col-lg-6">
-        <div class="card">
+    <div class="col-md-6">
+        <div class="card statistics-card">
             <div class="card-header bg-dark text-white">
                 <strong>
                     Sotuvlar summasi
@@ -42,17 +72,17 @@
                 </strong>
             </div>
             <div class="card-body">
-                <div style="font-size: 28px; font-weight: 800; color: #111827;">
+                <div class="stat-amount-usd">
                     ${{ total_sales_usd|floatformat:2|comma_to_dot }}
                 </div>
-                <div class="text-muted" style="margin-top: 6px; font-weight: 600;">
+                <div class="stat-amount-uzs text-muted">
                     {{ total_sales_uzs|floatformat:0|intdot }} so'm
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-lg-6">
-        <div class="card">
+    <div class="col-md-6">
+        <div class="card statistics-card">
             <div class="card-header bg-warning">
                 <strong>
                     Qarzdorlar summasi
@@ -60,10 +90,10 @@
                 </strong>
             </div>
             <div class="card-body">
-                <div style="font-size: 28px; font-weight: 800; color: #991b1b;">
+                <div class="stat-amount-usd" style="color: #991b1b;">
                     ${{ total_credit_usd|floatformat:2|comma_to_dot }}
                 </div>
-                <div class="text-muted" style="margin-top: 6px; font-weight: 600;">
+                <div class="stat-amount-uzs text-muted">
                     {{ total_credit_uzs|floatformat:0|intdot }} so'm
                 </div>
             </div>
@@ -71,28 +101,28 @@
     </div>
 </div>
 <div class="row g-3 mt-0">
-    <div class="col-lg-6">
-        <div class="card">
+    <div class="col-md-6">
+        <div class="card statistics-card">
             <div class="card-header bg-success text-white">
                 <strong>Sof foyda</strong>
             </div>
             <div class="card-body">
-                <div style="font-size: 24px; font-weight: 800; color: #047857;">
+                <div class="stat-amount-usd" style="color: #047857;">
                     ${{ total_profit_usd|floatformat:2|comma_to_dot }}
                 </div>
-                <div class="text-muted" style="margin-top: 6px; font-weight: 600;">
+                <div class="stat-amount-uzs text-muted">
                     {{ total_profit_uzs|floatformat:0|intdot }} so'm
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-lg-6">
-        <div class="card">
+    <div class="col-md-6">
+        <div class="card statistics-card">
             <div class="card-header text-white" style="background: linear-gradient(135deg, #b91c1c, #dc2626);">
                 <strong><i class="bi bi-wallet2"></i> Rasxodlar (shu davr)</strong>
             </div>
             <div class="card-body">
-                <div style="font-size: 28px; font-weight: 800; color: #991b1b;">
+                <div class="stat-amount-usd" style="color: #991b1b;">
                     {{ total_expenses_uzs|floatformat:0|intdot }} so'm
                 </div>
                 {% if total_expenses_usd_equiv %}
@@ -104,16 +134,16 @@
     </div>
 </div>
 <div class="row g-3 mt-0">
-    <div class="col-lg-12">
-        <div class="card border-primary">
+    <div class="col-12">
+        <div class="card border-primary statistics-card">
             <div class="card-header bg-primary text-white">
                 <strong>Sof foyda − rasxodlar (taxminiy)</strong>
             </div>
             <div class="card-body">
-                <div style="font-size: 22px; font-weight: 800; color: #1e3a8a;">
+                <div class="stat-amount-usd" style="color: #1e3a8a; font-size: 22px;">
                     ${{ net_after_expenses_usd|floatformat:2|comma_to_dot }}
                 </div>
-                <div class="text-muted" style="margin-top: 6px; font-weight: 600;">
+                <div class="stat-amount-uzs text-muted">
                     {{ net_after_expenses_uzs|floatformat:0|intdot }} so'm
                 </div>
                 <small class="text-muted">Sof foyda tannarx asosida; rasxodlar alohida yozuvlar bo'yicha.</small>

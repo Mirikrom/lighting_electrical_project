@@ -3,6 +3,19 @@
 
 {% block title %}Jarayonlar tarixi - Lustra & Lempala{% endblock %}
 
+{% block extra_css %}
+<style>
+    .process-history-table { min-width: 800px; }
+    @media (max-width: 768px) {
+        .process-history-table { font-size: 0.78rem; }
+        .process-history-table th,
+        .process-history-table td { padding: 0.45rem 0.5rem !important; }
+        .process-history-table td:nth-child(5) { max-width: 140px !important; }
+        .process-history-table td:last-child { max-width: 200px !important; }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
     <h1 class="display-5 fw-bold mb-0">
@@ -15,9 +28,10 @@
 
 <p class="text-muted mb-4">Sotuvlar, mahsulotlar, mijozlar, qarz to'lovlari, rasxodlar va kurs o'zgarishlari — kim va qachon bajarilgani.</p>
 
-<div class="table-responsive card border-0 shadow-sm">
+<div class="card border-0 shadow-sm">
     <div class="card-body p-0">
-        <table class="table table-hover mb-0 align-middle">
+        <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle process-history-table">
             <thead class="table-dark">
                 <tr>
                     <th>Vaqt</th>
@@ -65,6 +79,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 
