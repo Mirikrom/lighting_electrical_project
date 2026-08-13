@@ -272,6 +272,30 @@ class Sale(models.Model):
     def __str__(self):
         return f"Sotuv #{self.id} - ${self.total_amount}"
 
+    def get_discount_usd(self):
+        """Berilgan chegirma summasi (USD)."""
+        orig = self.original_total_amount or Decimal('0')
+        total = self.total_amount or Decimal('0')
+        if orig > total:
+            return orig - total
+        dp = self.discount_percent or Decimal('0')
+        if dp > 0:
+            base = orig if orig > 0 else total
+            if base > 0:
+                return (base * dp / Decimal('100')).quantize(Decimal('0.01'))
+        return Decimal('0')
+
+    def get_revenue_factor(self):
+        """Chegirmadan keyingi tushum / chegirmasiz tushum (1 = chegirma yo'q)."""
+        orig = self.original_total_amount or Decimal('0')
+        total = self.total_amount or Decimal('0')
+        if orig > 0:
+            return total / orig
+        dp = self.discount_percent or Decimal('0')
+        if dp > 0:
+            return (Decimal('100') - dp) / Decimal('100')
+        return Decimal('1')
+
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         logger.info(f"Sale created: {self.id}, Total: ${self.total_amount}")

@@ -2707,16 +2707,19 @@ def statistics(request):
             total_credit_usd += usd
             total_credit_uzs += usd * rate
 
-    # Sof foyda — faqat tannarx kiritilgan tovarlar bo'yicha (tannarxi yo'q tovarlar hisobga olinmaydi)
+    # Sof foyda — faqat tannarx kiritilgan tovarlar bo'yicha (tannarxi yo'q tovarlar hisobga olinmaydi).
+    # Tushum chegirmadan keyingi (skidka ayirilgan) narx bilan hisoblanadi.
     total_profit_usd = Decimal('0')
     total_profit_uzs = Decimal('0')
     if has_filter:
-        sale_ids = list(sales_qs.values_list('id', flat=True))
-        items = SaleItem.objects.filter(sale_id__in=sale_ids).select_related('variant')
+        items = SaleItem.objects.filter(sale_id__in=sales_qs.values('id')).select_related('variant', 'sale')
         for item in items:
             if item.variant and item.variant.cost_price and item.variant.cost_price > 0:
                 cost = item.variant.cost_price * item.quantity
-                total_profit_usd += (item.subtotal or Decimal('0')) - cost
+                factor = item.sale.get_revenue_factor() if item.sale_id else Decimal('1')
+                revenue = (item.subtotal or Decimal('0')) * factor
+                total_profit_usd += revenue - cost
+        total_profit_usd = total_profit_usd.quantize(Decimal('0.01'))
         total_profit_uzs = total_profit_usd * current_usd_rate
 
     total_expenses_uzs = Decimal('0')
