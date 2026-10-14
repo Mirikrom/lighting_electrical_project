@@ -1202,14 +1202,23 @@ def create_sale(request):
     edit_sale_id = request.GET.get('edit_sale')
     valid_edit_sale_id = None
     edit_sale_items = []
+    edit_payment_method = ''
+    edit_discount_percent = '0'
+    edit_customer_name = ''
+    edit_customer_phone = ''
     if edit_sale_id:
         try:
             candidate_id = int(edit_sale_id)
-            sale_for_edit = Sale.objects.filter(pk=candidate_id, market=market).prefetch_related(
+            sale_for_edit = Sale.objects.filter(pk=candidate_id, market=market).select_related('customer').prefetch_related(
                 Prefetch('items', queryset=SaleItem.objects.select_related('variant__product'))
             ).first()
             if sale_for_edit:
                 valid_edit_sale_id = sale_for_edit.id
+                edit_payment_method = sale_for_edit.payment_method or ''
+                edit_discount_percent = str(sale_for_edit.discount_percent or 0)
+                if sale_for_edit.customer_id:
+                    edit_customer_name = sale_for_edit.customer.name or ''
+                    edit_customer_phone = sale_for_edit.customer.phone or ''
                 for item in sale_for_edit.items.all():
                     product = item.variant.product if item.variant else getattr(item, 'product_old', None)
                     unit = getattr(product, 'unit', 'dona') if product else 'dona'
@@ -1247,7 +1256,77 @@ def create_sale(request):
         'append_sale_id': valid_append_sale_id,
         'edit_sale_id': valid_edit_sale_id,
         'edit_sale_items_json': json.dumps(edit_sale_items),
+        'edit_payment_method': edit_payment_method,
+        'edit_discount_percent': edit_discount_percent,
+        'edit_customer_name': edit_customer_name,
+        'edit_customer_phone': edit_customer_phone,
     })
+
+
+def credit_sale_principal(sale):
+    """Qarzning hozirgi summasi: chekdagi qolgan tovarlar.
+
+    Tovar qaytarib sotuv tahrirlansa, qarz eski total_amount da qolmasin.
+    Chegirma foizi bo'lsa, qolgan tovarlar summasidan shu foiz ayiriladi.
+    """
+    if getattr(sale, 'status', None) != 'completed':
+        return Decimal('0')
+    items_sum = Decimal('0')
+    has_items = False
+    for item in sale.items.all():
+        has_items = True
+        items_sum += item.subtotal or Decimal('0')
+    if not has_items:
+        return Decimal('0')
+    dp = sale.discount_percent or Decimal('0')
+    if dp > 0:
+        if dp >= Decimal('100'):
+            dp = Decimal('99.99')
+        factor = (Decimal('100') - dp) / Decimal('100')
+        return (items_sum * factor).quantize(Decimal('0.01'))
+    owed = items_sum.quantize(Decimal('0.01'))
+    stored = (sale.total_amount or Decimal('0')).quantize(Decimal('0.01'))
+    if stored > 0 and stored < owed:
+        return stored
+    return owed
+
+
+def _direct_debt_paid(sale):
+    return sum((p.amount_usd for p in sale.debt_payments.all() if not p.is_cancelled), Decimal('0'))
+
+
+def apply_credit_balances(sales):
+    """Mijoz qarzi = barcha qarz cheklari − barcha to'lovlar.
+
+    Bitta chek ortig'i bilan to'langan bo'lsa, ortiqcha pul boshqa ochiq
+    cheklarga o'tadi. Shu chekdan tovar qaytsa, umumiy qarz ham kamayadi.
+    """
+    groups = {}
+    for sale in sales:
+        sale.debt_principal = credit_sale_principal(sale)
+        sale._direct_paid = _direct_debt_paid(sale)
+        groups.setdefault(sale.customer_id or f'sale-{sale.id}', []).append(sale)
+    for group in groups.values():
+        leftover = Decimal('0')
+        for sale in group:
+            applied = min(sale.debt_principal, sale._direct_paid)
+            sale.paid_usd = applied
+            sale.remaining_usd = sale.debt_principal - applied
+            leftover += sale._direct_paid - applied
+        for sale in sorted(group, key=lambda s: (s.sale_date, s.id)):
+            if leftover <= 0:
+                break
+            if sale.remaining_usd <= 0:
+                continue
+            take = min(sale.remaining_usd, leftover)
+            sale.remaining_usd -= take
+            sale.paid_usd += take
+            leftover -= take
+        for sale in group:
+            sale.remaining_usd = sale.remaining_usd.quantize(Decimal('0.01'))
+            sale.paid_usd = sale.paid_usd.quantize(Decimal('0.01'))
+            sale.is_closed = sale.remaining_usd <= Decimal('0.0001')
+    return sales
 
 
 @require_market
@@ -1256,8 +1335,10 @@ def credit_list(request):
     market = get_request_market(request)
     credits = Sale.objects.filter(
         market=market,
-        payment_method='credit'
-    ).select_related('customer', 'created_by').prefetch_related('debt_payments')
+        status='completed',
+    ).filter(
+        Q(payment_method='credit') | Q(debt_payments__is_cancelled=False)
+    ).distinct().select_related('customer', 'created_by').prefetch_related('debt_payments', 'items')
     
     # Filter by date range
     date_from = request.GET.get('date_from')
@@ -1272,19 +1353,17 @@ def credit_list(request):
     if customer_id:
         credits = credits.filter(customer_id=customer_id)
     
-    # Har bir qarz sotuvi bo'yicha qolgan qarzni hisoblaymiz
-    sale_remaining_map = {}
-    for sale in credits:
-        paid_usd = sum((p.amount_usd for p in sale.debt_payments.all() if not p.is_cancelled), Decimal('0'))
-        remaining = max(Decimal('0'), (sale.total_amount or Decimal('0')) - paid_usd)
-        sale.paid_usd = paid_usd
-        sale.remaining_usd = remaining
-        sale.is_closed = remaining <= Decimal('0.0001')
-        sale_remaining_map[sale.id] = {
-            'paid_usd': paid_usd,
-            'remaining_usd': remaining,
-            'is_closed': remaining <= Decimal('0.0001'),
+    # Qarz = barcha cheklar − barcha to'lovlar. Ortiqcha to'lov boshqa chekka o'tadi.
+    credits = list(credits)
+    apply_credit_balances(credits)
+    sale_remaining_map = {
+        sale.id: {
+            'paid_usd': sale.paid_usd,
+            'remaining_usd': sale.remaining_usd,
+            'is_closed': sale.is_closed,
         }
+        for sale in credits
+    }
 
     # Mijozlar bo'yicha: aktiv qarzlar va yopilganlar alohida
     customers_open = {}
@@ -1295,7 +1374,7 @@ def credit_list(request):
             continue
         info = sale_remaining_map.get(sale.id, {})
         remaining = info.get('remaining_usd', Decimal('0'))
-        paid_usd = info.get('paid_usd', Decimal('0'))
+        paid_usd = getattr(sale, '_direct_paid', info.get('paid_usd', Decimal('0')))
 
         if customer.id not in customers_open:
             customers_open[customer.id] = {
@@ -1328,8 +1407,12 @@ def credit_list(request):
     total_debt = sum((d['total_debt'] for d in customer_debts), Decimal('0'))
     current_usd_rate = get_current_usd_rate(market)
 
-    # 100 tadan oshsa pagination
-    credits = sorted(credits, key=lambda s: s.sale_date, reverse=True)
+    # Faqat qoldig'i bor sotuvlar — to'liq qaytarilgan yoki yopilgan qarz ro'yxatda qolmasin
+    credits = sorted(
+        [s for s in credits if not s.is_closed],
+        key=lambda s: s.sale_date,
+        reverse=True,
+    )
     paginator = Paginator(credits, 100)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
@@ -1365,9 +1448,11 @@ def credit_customer_detail(request, customer_id):
 
     credit_sales_qs = Sale.objects.filter(
         market=market,
-        payment_method='credit',
-        customer=customer
-    ).select_related('created_by').prefetch_related('debt_payments').order_by('-sale_date')
+        status='completed',
+        customer=customer,
+    ).filter(
+        Q(payment_method='credit') | Q(debt_payments__is_cancelled=False)
+    ).distinct().select_related('created_by').prefetch_related('debt_payments', 'items').order_by('-sale_date')
 
     if request.method == 'POST':
         action = (request.POST.get('action') or '').strip()
@@ -1385,9 +1470,16 @@ def credit_customer_detail(request, customer_id):
                 return redirect('store:credit_customer_detail', customer_id=customer.id)
 
             with transaction.atomic():
+                sale_ids = list(
+                    Sale.objects.filter(
+                        market=market, status='completed', customer=customer
+                    ).filter(
+                        Q(payment_method='credit') | Q(debt_payments__is_cancelled=False)
+                    ).values_list('id', flat=True).distinct()
+                )
                 sales_for_payment = list(
-                    Sale.objects.select_for_update().filter(
-                        market=market, payment_method='credit', customer=customer
+                    Sale.objects.select_for_update().filter(id__in=sale_ids).prefetch_related(
+                        'items', 'debt_payments'
                     ).order_by('sale_date')
                 )
                 if not sales_for_payment:
@@ -1401,13 +1493,9 @@ def credit_customer_detail(request, customer_id):
                     amount_usd_total = amount / rate_used
                 amount_usd_total = amount_usd_total.quantize(Decimal('0.01'))
 
-                remaining_total_usd = Decimal('0')
-                sale_remainings = []
-                for sale in sales_for_payment:
-                    paid_usd = DebtPayment.objects.filter(sale=sale, is_cancelled=False).aggregate(total=Sum('amount_usd')).get('total') or Decimal('0')
-                    remaining_usd = max(Decimal('0'), (sale.total_amount or Decimal('0')) - paid_usd)
-                    remaining_total_usd += remaining_usd
-                    sale_remainings.append((sale, remaining_usd))
+                apply_credit_balances(sales_for_payment)
+                remaining_total_usd = sum((sale.remaining_usd for sale in sales_for_payment), Decimal('0'))
+                sale_remainings = [(sale, sale.remaining_usd) for sale in sales_for_payment]
 
                 if amount_usd_total > remaining_total_usd + Decimal('0.0001'):
                     messages.error(request, "To'lov summasi umumiy qarz qoldig'idan katta bo'lmasin.")
@@ -1473,25 +1561,25 @@ def credit_customer_detail(request, customer_id):
                 messages.success(request, "To'lov bekor qilindi.")
                 return redirect('store:credit_customer_detail', customer_id=customer.id)
 
+    credit_sales = list(credit_sales_qs)
+    apply_credit_balances(credit_sales)
     credit_rows = []
     payment_history = []
-    for sale in credit_sales_qs:
+    for sale in credit_sales:
         payments = [p for p in sale.debt_payments.all()]
-        active_payments = [p for p in payments if not p.is_cancelled]
-        paid_usd = sum((p.amount_usd for p in active_payments), Decimal('0'))
-        remaining_usd = max(Decimal('0'), (sale.total_amount or Decimal('0')) - paid_usd)
         credit_rows.append({
             'sale': sale,
-            'paid_usd': paid_usd,
-            'remaining_usd': remaining_usd,
-            'is_closed': remaining_usd <= Decimal('0.0001'),
+            'principal': sale.debt_principal,
+            'paid_usd': sale.paid_usd,
+            'remaining_usd': sale.remaining_usd,
+            'is_closed': sale.is_closed,
             'payments': payments,
         })
         payment_history.extend(payments)
 
     payment_history.sort(key=lambda p: p.paid_at, reverse=True)
     total_remaining_usd = sum((row['remaining_usd'] for row in credit_rows), Decimal('0'))
-    total_paid_usd = sum((row['paid_usd'] for row in credit_rows), Decimal('0'))
+    total_paid_usd = sum((sale._direct_paid for sale in credit_sales), Decimal('0'))
 
     return render(request, 'store/credit_customer_detail.html', {
         'customer': customer,
@@ -1624,12 +1712,12 @@ def cancel_sale(request, pk):
             return redirect('store:sale_detail', pk=pk)
 
         # Omborga qaytarish
-            for item in sale.items.select_related('variant'):
-                if item.variant:
-                    variant = item.variant
-                    if not getattr(variant, 'unlimited_stock', False):
-                        variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
-                        variant.save(update_fields=['stock_quantity'])
+        for item in sale.items.select_related('variant'):
+            if item.variant:
+                variant = item.variant
+                if not getattr(variant, 'unlimited_stock', False):
+                    variant.stock_quantity += item.quantity
+                    variant.save(update_fields=['stock_quantity'])
 
         sale.status = 'returned'
         sale.save(update_fields=['status'])
@@ -1735,8 +1823,33 @@ def append_sale(request, pk):
                     variant.save(update_fields=['stock_quantity'])
                 total_added += unit_price * quantity
 
-            sale.total_amount += total_added
-            sale.save(update_fields=['total_amount'])
+            base_original = sale.original_total_amount or Decimal('0')
+            if base_original <= 0:
+                base_original = sale.total_amount or Decimal('0')
+            sale.original_total_amount = base_original + total_added
+            dp = sale.discount_percent or Decimal('0')
+            if dp > 0:
+                if dp >= Decimal('100'):
+                    dp = Decimal('99.99')
+                factor = (Decimal('100') - dp) / Decimal('100')
+                sale.total_amount = (sale.original_total_amount * factor).quantize(Decimal('0.01'))
+            else:
+                sale.total_amount = sale.original_total_amount
+            if sale.payment_method == 'cash':
+                sale.payment_cash_amount = sale.total_amount
+                sale.payment_card_amount = Decimal('0')
+            elif sale.payment_method == 'card':
+                sale.payment_cash_amount = Decimal('0')
+                sale.payment_card_amount = sale.total_amount
+            elif sale.payment_method == 'mixed':
+                cash_amt = sale.payment_cash_amount or Decimal('0')
+                if cash_amt > sale.total_amount:
+                    cash_amt = sale.total_amount
+                sale.payment_cash_amount = cash_amt
+                sale.payment_card_amount = sale.total_amount - cash_amt
+            sale.save(update_fields=[
+                'total_amount', 'original_total_amount', 'payment_cash_amount', 'payment_card_amount',
+            ])
 
         logger.info(f"Sale appended: {sale.id}, Added total: ${total_added} USD")
         log_process(
@@ -1757,14 +1870,12 @@ def edit_sale(request, pk):
     market = get_request_market(request)
     try:
         data = json.loads(request.body)
-        items = data.get('items', [])
+        items = data.get('items') or []
         payment_method = data.get('payment_method')
         payment_cash_usd = data.get('payment_cash_usd')
         payment_card_usd = data.get('payment_card_usd')
         customer_name = (data.get('customer_name') or '').strip()
         customer_phone = (data.get('customer_phone') or '').strip()
-        if not items:
-            return JsonResponse({'error': "Mahsulotlar ro'yxati bo'sh."}, status=400)
 
         with transaction.atomic():
             sale = get_object_or_404(Sale.objects.select_for_update(), pk=pk, market=market)
@@ -1803,42 +1914,45 @@ def edit_sale(request, pk):
             # Eski itemlarni o'chiramiz
             sale.items.all().delete()
 
-            variant_ids = [int(item_data['product_id']) for item_data in items]
-            variants_dict = {
-                v.id: v for v in ProductVariant.objects.select_for_update().filter(
-                    pk__in=variant_ids,
-                    product__category__market=market
-                )
-            }
-            if len(variants_dict) != len(variant_ids):
-                return JsonResponse({'error': 'Mahsulot topilmadi'}, status=400)
-
-            # Zaxirani tekshirish
-            for item_data in items:
-                vid = int(item_data['product_id'])
-                quantity = int(item_data['quantity'])
-                variant = variants_dict[vid]
-                if not getattr(variant, 'unlimited_stock', False) and variant.stock_quantity < quantity:
-                    return JsonResponse({
-                        'error': f'{variant} uchun yetarli mahsulot yo\'q (omborda: {variant.stock_quantity} dona)'
-                    }, status=400)
-
             total = Decimal('0')
-            for item_data in items:
-                variant = variants_dict[int(item_data['product_id'])]
-                quantity = int(item_data['quantity'])
-                unit_price = Decimal(str(item_data['price']))
+            if items:
+                variant_ids = [int(item_data['product_id']) for item_data in items]
+                variants_dict = {
+                    v.id: v for v in ProductVariant.objects.select_for_update().filter(
+                        pk__in=variant_ids,
+                        product__category__market=market
+                    )
+                }
+                if len(variants_dict) != len(variant_ids):
+                    transaction.set_rollback(True)
+                    return JsonResponse({'error': 'Mahsulot topilmadi'}, status=400)
 
-                SaleItem.objects.create(
-                    sale=sale,
-                    variant=variant,
-                    quantity=quantity,
-                    unit_price=unit_price
-                )
-                if not getattr(variant, 'unlimited_stock', False):
-                    variant.stock_quantity = max(0, variant.stock_quantity - quantity)
-                    variant.save(update_fields=['stock_quantity'])
-                total += unit_price * quantity
+                # Zaxirani tekshirish
+                for item_data in items:
+                    vid = int(item_data['product_id'])
+                    quantity = int(item_data['quantity'])
+                    variant = variants_dict[vid]
+                    if not getattr(variant, 'unlimited_stock', False) and variant.stock_quantity < quantity:
+                        transaction.set_rollback(True)
+                        return JsonResponse({
+                            'error': f'{variant} uchun yetarli mahsulot yo\'q (omborda: {variant.stock_quantity} dona)'
+                        }, status=400)
+
+                for item_data in items:
+                    variant = variants_dict[int(item_data['product_id'])]
+                    quantity = int(item_data['quantity'])
+                    unit_price = Decimal(str(item_data['price']))
+
+                    SaleItem.objects.create(
+                        sale=sale,
+                        variant=variant,
+                        quantity=quantity,
+                        unit_price=unit_price
+                    )
+                    if not getattr(variant, 'unlimited_stock', False):
+                        variant.stock_quantity = max(0, variant.stock_quantity - quantity)
+                        variant.save(update_fields=['stock_quantity'])
+                    total += unit_price * quantity
 
             original_total = total
             discount_percent_raw = data.get('discount_percent')
@@ -1860,6 +1974,9 @@ def edit_sale(request, pk):
                 sale.original_total_amount = original_total
 
             sale.total_amount = total
+            # Qarz to'lovi yozilgan chek tahrirda tasodifan naqdga aylanib ketmasin
+            if sale.debt_payments.filter(is_cancelled=False).exists():
+                payment_method = 'credit'
             if payment_method:
                 sale.payment_method = payment_method
             sale.customer = customer
@@ -2691,21 +2808,28 @@ def statistics(request):
         total_sales_usd += usd
         total_sales_uzs += usd * rate
 
-    credits_qs = Sale.objects.filter(market=market, status='completed', payment_method='credit')
+    # Qarzdorlar summasi — qarzdorlar ro'yxatidagi qolgan qarz bilan bir xil:
+    # qolgan tovarlar minus to'lovlar. Bitta chekdan tovar qaytsa, ortiqcha
+    # to'lov boshqa ochiq chekka o'tadi va umumiy qarz ham kamayadi.
+    total_credit_usd = Decimal('0')
+    total_credit_uzs = Decimal('0')
     if has_filter:
+        credits_qs = Sale.objects.filter(market=market, status='completed').filter(
+            Q(payment_method='credit') | Q(debt_payments__is_cancelled=False)
+        ).distinct()
         if date_from:
             credits_qs = credits_qs.filter(sale_date__date__gte=date_from)
         if date_to:
             credits_qs = credits_qs.filter(sale_date__date__lte=date_to)
-
-    total_credit_usd = Decimal('0')
-    total_credit_uzs = Decimal('0')
-    if has_filter:
-        for s in credits_qs.only('total_amount', 'usd_rate'):
+        credits = list(credits_qs.prefetch_related('debt_payments', 'items'))
+        apply_credit_balances(credits)
+        for s in credits:
             rate = s.usd_rate if s.usd_rate else current_usd_rate
-            usd = (s.total_amount or Decimal('0'))
+            usd = s.remaining_usd
             total_credit_usd += usd
             total_credit_uzs += usd * rate
+        total_credit_usd = total_credit_usd.quantize(Decimal('0.01'))
+        total_credit_uzs = total_credit_uzs.quantize(Decimal('0.01'))
 
     # Sof foyda — faqat tannarx kiritilgan tovarlar bo'yicha (tannarxi yo'q tovarlar hisobga olinmaydi).
     # Tushum chegirmadan keyingi (skidka ayirilgan) narx bilan hisoblanadi.

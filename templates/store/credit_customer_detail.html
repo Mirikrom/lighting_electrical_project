@@ -165,7 +165,7 @@
                     <tr>
                         <td>#{{ row.sale.id }}</td>
                         <td>{{ row.sale.sale_date|date:"d.m.Y H:i" }}</td>
-                        <td>${{ row.sale.total_amount|floatformat:2|comma_to_dot }}</td>
+                        <td>${{ row.principal|floatformat:2|comma_to_dot }}</td>
                         <td class="text-primary">${{ row.paid_usd|floatformat:2|comma_to_dot }}</td>
                         <td>
                             {% if row.is_closed %}

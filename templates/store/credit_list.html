@@ -175,7 +175,7 @@
                     {% endif %}
                 </td>
                 <td>{{ credit.sale_date|date:"d.m.Y H:i" }}</td>
-                <td><strong class="text-danger">${{ credit.total_amount|floatformat:2|comma_to_dot }}</strong></td>
+                <td><strong class="text-danger">${{ credit.debt_principal|floatformat:2|comma_to_dot }}</strong></td>
                 <td><strong class="text-primary">${{ credit.paid_usd|default:0|floatformat:2|comma_to_dot }}</strong></td>
                 <td>
                     {% if credit.remaining_usd and credit.remaining_usd > 0 %}

@@ -1322,6 +1322,10 @@
     let cart = [];
     const APPEND_SALE_ID = parseInt('{{ append_sale_id|default:"" }}', 10) || null;
     const EDIT_SALE_ID = parseInt('{{ edit_sale_id|default:"" }}', 10) || null;
+    const EDIT_PAYMENT_METHOD = '{{ edit_payment_method|default:""|escapejs }}';
+    const EDIT_DISCOUNT_PERCENT = parseFloat('{{ edit_discount_percent|default:"0" }}') || 0;
+    const EDIT_CUSTOMER_NAME = '{{ edit_customer_name|default:""|escapejs }}';
+    const EDIT_CUSTOMER_PHONE = '{{ edit_customer_phone|default:""|escapejs }}';
     let selectedPaymentMethod = 'cash';
     let mixedPayment = { cash_usd: 0, card_usd: 0, cash_uzs: 0, card_uzs: 0, is_set: false, input_currency: 'usd' };
     let mixedModalCurrency = 'usd';
@@ -2487,9 +2491,14 @@
             modeHint.textContent = isCustomerRequired() ? '(qarzga uchun majburiy)' : '(ixtiyoriy)';
             modeHint.style.color = isCustomerRequired() ? '#b91c1c' : '#64748b';
         }
-        if (customerNameInput) customerNameInput.value = '';
-        if (customerPhoneInput) customerPhoneInput.value = '';
-        selectedCustomer = null;
+        if (EDIT_SALE_ID) {
+            if (customerNameInput && !customerNameInput.value) customerNameInput.value = EDIT_CUSTOMER_NAME;
+            if (customerPhoneInput && !customerPhoneInput.value) customerPhoneInput.value = EDIT_CUSTOMER_PHONE;
+        } else {
+            if (customerNameInput) customerNameInput.value = '';
+            if (customerPhoneInput) customerPhoneInput.value = '';
+            selectedCustomer = null;
+        }
         if (customerNameInput) customerNameInput.focus();
     }
     
@@ -2524,8 +2533,12 @@
     
     async function finalizeOrder() {
         if (cart.length === 0) {
-            showAppAlert('Savat bo\'sh', 'Savat bo\'sh! Avval mahsulot qo\'shing.', 'warning');
-            return;
+            if (EDIT_SALE_ID) {
+                if (!confirm('Barcha tovar qaytarilsinmi? Chek summasi va qarz 0 bo\'ladi.')) return;
+            } else {
+                showAppAlert('Savat bo\'sh', 'Savat bo\'sh! Avval mahsulot qo\'shing.', 'warning');
+                return;
+            }
         }
         if (selectedPaymentMethod === 'mixed' && !mixedPayment.is_set) {
             openMixedPaymentModal();
@@ -2622,7 +2635,22 @@
         }
     }
     
-    // Initialize
-    selectPaymentMethod('cash');
+    // Initialize — tahrirda eski to'lov usuli va chegirma saqlanadi (qarz naqdga aylanib ketmasin)
+    if (EDIT_SALE_ID && EDIT_PAYMENT_METHOD && EDIT_PAYMENT_METHOD !== 'mixed') {
+        selectPaymentMethod(EDIT_PAYMENT_METHOD);
+    } else if (EDIT_SALE_ID && EDIT_PAYMENT_METHOD === 'mixed') {
+        selectedPaymentMethod = 'mixed';
+        document.querySelectorAll('.payment-btn').forEach(function(btn) { btn.classList.remove('active'); });
+        var mixedBtn = document.querySelector('[data-method="mixed"]');
+        if (mixedBtn) mixedBtn.classList.add('active');
+        var paymentInput = document.getElementById('paymentMethod');
+        if (paymentInput) paymentInput.value = 'mixed';
+    } else {
+        selectPaymentMethod('cash');
+    }
+    if (EDIT_SALE_ID && EDIT_DISCOUNT_PERCENT > 0) {
+        discountPercent = EDIT_DISCOUNT_PERCENT;
+        updateOrderTable();
+    }
 </script>
 {% endblock %}
