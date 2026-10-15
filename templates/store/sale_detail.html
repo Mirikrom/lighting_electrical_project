@@ -101,10 +101,10 @@
                         {% for item in sale.items.all %}
                         <tr>
                             <td>
-                                <strong>{{ item.product.name }}</strong><br>
-                                <small class="text-muted">SKU: {{ item.product.sku }}</small>
+                                <strong>{{ item.line_name }}</strong>{% if item.line_params %} <small class="text-muted">{{ item.line_params }}</small>{% endif %}<br>
+                                <small class="text-muted">SKU: {{ item.line_sku|default:"—" }}</small>
                             </td>
-                            <td>{{ item.quantity }}{% if item.product.unit == 'metr' %} M{% else %} dona{% endif %}</td>
+                            <td>{{ item.quantity }}{% if item.line_unit == 'metr' %} M{% else %} dona{% endif %}</td>
                             <td>${{ item.unit_price|floatformat:2|comma_to_dot }} <small class="text-muted">({% with r=sale.usd_rate|default:current_usd_rate %}{{ item.unit_price|multiply:r|floatformat:0|intdot }}{% endwith %} so'm)</small></td>
                             <td><strong>${{ item.subtotal|floatformat:2|comma_to_dot }}</strong> <small class="text-muted">({% with r=sale.usd_rate|default:current_usd_rate %}{{ item.subtotal|multiply:r|floatformat:0|intdot }}{% endwith %} so'm)</small></td>
                         </tr>

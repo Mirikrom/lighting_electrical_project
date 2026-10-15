@@ -303,12 +303,18 @@ class Sale(models.Model):
 
 class SaleItem(models.Model):
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='items', verbose_name="Sotuv")
-    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Mahsulot varianti")
+    variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Mahsulot varianti")
     # Backward compatibility - eski Product uchun
-    product_old = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Mahsulot (eski)", related_name='old_sale_items')
+    product_old = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Mahsulot (eski)", related_name='old_sale_items')
     quantity = models.IntegerField(validators=[MinValueValidator(1)], verbose_name="Miqdor")
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Birlik narxi (USD)")
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Jami (USD)")
+    # Sotilgan paytdagi nusxa. Keyin katalogdan o'chirilsa ham chek shu yozuvni ko'rsatadi.
+    name_snapshot = models.CharField(max_length=300, blank=True, default='', verbose_name="Mahsulot nomi (sotuv payti)")
+    params_snapshot = models.CharField(max_length=300, blank=True, default='', verbose_name="Parametrlar (sotuv payti)")
+    unit_snapshot = models.CharField(max_length=10, blank=True, default='', verbose_name="O'lchov (sotuv payti)")
+    sku_snapshot = models.CharField(max_length=100, blank=True, default='', verbose_name="SKU (sotuv payti)")
+    cost_price_snapshot = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Tannarx (sotuv payti)")
 
     class Meta:
         verbose_name = "Sotuv elementi"
@@ -326,7 +332,62 @@ class SaleItem(models.Model):
 
     def save(self, *args, **kwargs):
         self.subtotal = self.unit_price * self.quantity
+        if self.variant_id and not self.name_snapshot:
+            self.write_sale_snapshot()
         super().save(*args, **kwargs)
+
+    def write_sale_snapshot(self):
+        """Sotuv paytidagi nom, parametr, o'lchov va tannarxni qatorga yozadi."""
+        variant = self.variant
+        if variant is None:
+            return
+        product = variant.product
+        self.name_snapshot = (product.name if product else '')[:300]
+        try:
+            params = [av.value for av in variant.attribute_values.all() if getattr(av.attribute, 'name', '') == 'parametr']
+            self.params_snapshot = ', '.join(params)[:300]
+        except Exception:
+            self.params_snapshot = ''
+        self.unit_snapshot = (getattr(product, 'unit', None) or 'dona')[:10]
+        self.sku_snapshot = (variant.sku or '')[:100]
+        if variant.cost_price is not None:
+            self.cost_price_snapshot = variant.cost_price
+
+    def line_name(self):
+        if self.name_snapshot:
+            return self.name_snapshot
+        if self.variant_id and self.variant and self.variant.product_id:
+            return self.variant.product.name
+        if self.product_old_id and self.product_old:
+            return self.product_old.name
+        return "O'chirilgan mahsulot"
+
+    def line_params(self):
+        if self.name_snapshot:
+            return self.params_snapshot
+        if self.variant_id and self.variant:
+            try:
+                params = [av.value for av in self.variant.attribute_values.all() if getattr(av.attribute, 'name', '') == 'parametr']
+                return ', '.join(params)
+            except Exception:
+                return ''
+        return ''
+
+    def line_unit(self):
+        if self.unit_snapshot:
+            return self.unit_snapshot
+        if self.variant_id and self.variant and self.variant.product_id:
+            return self.variant.product.unit or 'dona'
+        if self.product_old_id and self.product_old:
+            return self.product_old.unit or 'dona'
+        return 'dona'
+
+    def line_sku(self):
+        if self.sku_snapshot:
+            return self.sku_snapshot
+        if self.variant_id and self.variant and self.variant.sku:
+            return self.variant.sku
+        return ''
 
 
 class DebtPayment(models.Model):

@@ -226,3 +226,17 @@ class CreditSaleDebtTests(TestCase):
         self.v2.refresh_from_db()
         self.assertEqual(self.v1.stock_quantity, 9)
         self.assertEqual(self.v2.stock_quantity, 10)
+
+    def test_deleting_catalog_product_keeps_sold_line(self):
+        item = self.sale.items.get(variant=self.v1)
+        self.assertEqual(item.name_snapshot, 'LAMPA')
+        self.assertEqual(item.line_name(), 'LAMPA')
+        self.v1.delete()
+        item.refresh_from_db()
+        self.sale.refresh_from_db()
+        self.assertIsNone(item.variant_id)
+        self.assertEqual(item.name_snapshot, 'LAMPA')
+        self.assertEqual(item.quantity, 1)
+        self.assertEqual(item.unit_price, Decimal('300.00'))
+        self.assertEqual(self.sale.items.count(), 2)
+        self.assertEqual(self.sale.total_amount, Decimal('500.00'))

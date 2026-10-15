@@ -1903,7 +1903,7 @@ def edit_sale(request, pk):
             elif payment_method == 'credit' and not customer:
                 return JsonResponse({'error': "Qarzga sotuv uchun mijozni kiriting."}, status=400)
 
-            # Eski mahsulotlarni omborga qaytaramiz
+            # Katalogdan o'chib ketgan, lekin chekda yozib qo'yilgan qatorlar qoladi.
             for item in sale.items.select_related('variant'):
                 if item.variant:
                     variant = item.variant
@@ -1911,10 +1911,15 @@ def edit_sale(request, pk):
                         variant.stock_quantity = max(0, variant.stock_quantity + item.quantity)
                         variant.save(update_fields=['stock_quantity'])
 
-            # Eski itemlarni o'chiramiz
-            sale.items.all().delete()
+            if items:
+                sale.items.filter(variant__isnull=False).delete()
+            else:
+                sale.items.all().delete()
 
-            total = Decimal('0')
+            total = sum(
+                (row.subtotal or Decimal('0') for row in sale.items.all()),
+                Decimal('0'),
+            )
             if items:
                 variant_ids = [int(item_data['product_id']) for item_data in items]
                 variants_dict = {
@@ -2054,14 +2059,12 @@ def print_receipt(request, pk):
     lines.append('')
     for item in sale.items.all():
         item_usd = float(item.subtotal)
-        product = item.variant.product if item.variant else getattr(item, 'product_old', None)
-        unit = getattr(product, 'unit', 'dona') if product else 'dona'
+        unit = item.line_unit()
         qty_suffix = " M" if unit == 'metr' else "x"
-        lines.append(f"{item.product.name}  {item.quantity}{qty_suffix}  ${item_usd:.2f}")
-        if item.variant:
-            params = [av.value for av in item.variant.attribute_values.all() if getattr(av.attribute, 'name', '') == 'parametr']
-            if params:
-                lines.append("  " + ", ".join(params))
+        lines.append(f"{item.line_name()}  {item.quantity}{qty_suffix}  ${item_usd:.2f}")
+        params = item.line_params()
+        if params:
+            lines.append("  " + params)
     total_usd = float(sale.total_amount)
     total_usd_formatted = f"{total_usd:,.2f}"
     total_soom = total_usd * receipt_rate
@@ -2453,23 +2456,13 @@ def _sale_delete_snapshot_text(sale):
     if not items:
         lines.append("(qatorlar yo'q)")
     for i, item in enumerate(items, 1):
-        if item.variant:
-            v = item.variant
-            p = v.product
-            try:
-                vdisp = v.get_display_name()
-            except Exception:
-                vdisp = str(v)
-            sku = v.sku or '—'
-            unit_suf = ' M' if getattr(p, 'unit', '') == 'metr' else ' dona'
+        if item.name_snapshot or item.variant_id or item.product_old_id:
+            sku = item.line_sku() or '—'
+            unit_suf = ' M' if item.line_unit() == 'metr' else ' dona'
+            params = item.line_params()
+            extra = f" | {params}" if params else ''
             lines.append(
-                f"{i}. {p.name} | {vdisp} | SKU {sku} | {item.quantity}{unit_suf} x ${item.unit_price} = ${item.subtotal}"
-            )
-        elif item.product_old:
-            pu = item.product_old
-            unit_suf = ' M' if getattr(pu, 'unit', '') == 'metr' else ' dona'
-            lines.append(
-                f"{i}. {pu.name} | {item.quantity}{unit_suf} x ${item.unit_price} = ${item.subtotal}"
+                f"{i}. {item.line_name()}{extra} | SKU {sku} | {item.quantity}{unit_suf} x ${item.unit_price} = ${item.subtotal}"
             )
         else:
             lines.append(f"{i}. (noma'lum mahsulot) {item.quantity} x ${item.unit_price} = ${item.subtotal}")
@@ -2838,8 +2831,13 @@ def statistics(request):
     if has_filter:
         items = SaleItem.objects.filter(sale_id__in=sales_qs.values('id')).select_related('variant', 'sale')
         for item in items:
-            if item.variant and item.variant.cost_price and item.variant.cost_price > 0:
-                cost = item.variant.cost_price * item.quantity
+            cost_each = None
+            if item.variant_id and item.variant and item.variant.cost_price and item.variant.cost_price > 0:
+                cost_each = item.variant.cost_price
+            elif item.cost_price_snapshot and item.cost_price_snapshot > 0:
+                cost_each = item.cost_price_snapshot
+            if cost_each:
+                cost = cost_each * item.quantity
                 factor = item.sale.get_revenue_factor() if item.sale_id else Decimal('1')
                 revenue = (item.subtotal or Decimal('0')) * factor
                 total_profit_usd += revenue - cost

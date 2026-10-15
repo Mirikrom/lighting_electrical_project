@@ -276,18 +276,14 @@
             <div class="item-line1">
                 <div class="item-index">{{ forloop.counter }}.</div>
                 <div class="item-name">
-                    {{ item.product.name }}
-                    {% if item.variant %}
-                    {% with params=item.variant|variant_parametrlar %}
-                    {% if params %}
-                    <span class="item-param-inline">{{ params }}</span>
-                    {% endif %}
-                    {% endwith %}
+                    {{ item.line_name }}
+                    {% if item.line_params %}
+                    <span class="item-param-inline">{{ item.line_params }}</span>
                     {% endif %}
                 </div>
             </div>
             <div class="item-line2">
-                <div class="item-qty-left">{{ item.quantity }} {% if item.product.unit == 'metr' %}metr{% else %}dona{% endif %} x {{ item.unit_price|multiply:receipt_rate|floatformat:0|intdot }}</div>
+                <div class="item-qty-left">{{ item.quantity }} {% if item.line_unit == 'metr' %}metr{% else %}dona{% endif %} x {{ item.unit_price|multiply:receipt_rate|floatformat:0|intdot }}</div>
                 <div class="item-price">{{ item.subtotal|multiply:receipt_rate|floatformat:0|intdot }} so'm</div>
             </div>
         </div>
