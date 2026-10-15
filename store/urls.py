@@ -10,6 +10,7 @@ urlpatterns = [
     path('no-market/', views.no_market_view, name='no_market'),
     path('', views.create_sale, name='product_list'),  # Home page -> New Sale
     path('products/', views.product_list, name='product_list_old'),
+    path('products/delete-selected/', views.delete_products_selected, name='delete_products_selected'),
     path('products/create/', views.create_product, name='create_product'),
     path('products/<int:pk>/', views.product_detail, name='product_detail'),
     path('products/<int:pk>/upload-image/', views.upload_product_image, name='upload_product_image'),

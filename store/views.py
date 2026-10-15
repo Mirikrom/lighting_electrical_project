@@ -373,6 +373,51 @@ def delete_product(request, pk):
             return redirect('store:product_list_old')
 
 
+@require_market
+@require_http_methods(["POST"])
+def delete_products_selected(request):
+    """Ro'yxatdan tanlangan mahsulotlarni o'chirish. Chekdagi sotilgan qatorlar qoladi."""
+    market = get_request_market(request)
+    ids = []
+    for raw in request.POST.getlist('ids'):
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    ids = list(dict.fromkeys(ids))
+    next_url = (request.POST.get('next') or '').strip()
+    if not next_url.startswith('/') or next_url.startswith('//'):
+        next_url = reverse('store:product_list_old')
+    if not ids:
+        messages.error(request, "O'chirish uchun mahsulot tanlanmagan.")
+        return redirect(next_url)
+
+    products = list(Product.objects.filter(pk__in=ids, category__market=market, is_active=True))
+    if not products:
+        messages.error(request, "Mahsulot topilmadi.")
+        return redirect(next_url)
+
+    sold_lines = SaleItem.objects.filter(variant__product__in=products).select_related('variant__product')
+    for item in sold_lines:
+        if item.variant_id and not item.name_snapshot:
+            item.write_sale_snapshot()
+            item.save(update_fields=[
+                'name_snapshot', 'params_snapshot', 'unit_snapshot', 'sku_snapshot', 'cost_price_snapshot',
+            ])
+
+    for product in products:
+        detail_snap = _product_delete_snapshot_text(product)
+        pid = product.pk
+        name = product.name
+        product.delete()
+        log_process(
+            market, request.user, ProcessLog.ENTITY_PRODUCT, ProcessLog.ACTION_DELETE, pid,
+            f"Mahsulot o'chirildi: {name}", detail_snap,
+        )
+    messages.success(request, f"{len(products)} ta mahsulot o'chirildi.")
+    return redirect(next_url)
+
+
 def _create_product_form_data(post):
     """Validatsiya xatosi bo'lganda formani to'ldirish uchun POST dan ma'lumot."""
     return {
